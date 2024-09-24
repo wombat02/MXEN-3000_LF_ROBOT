@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.11.35303.130
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LF_ROBOT_GUI", "LF_ROBOT_GUI\LF_ROBOT_GUI.csproj", "{FF14A2D2-F7EE-4859-9104-802265C4425E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FF14A2D2-F7EE-4859-9104-802265C4425E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FF14A2D2-F7EE-4859-9104-802265C4425E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FF14A2D2-F7EE-4859-9104-802265C4425E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FF14A2D2-F7EE-4859-9104-802265C4425E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {191AD0AA-8B9D-4117-9FAE-68E250033EA4}
+	EndGlobalSection
+EndGlobal
