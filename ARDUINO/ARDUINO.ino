@@ -30,12 +30,12 @@ byte checkSum = 0;
 const byte START = 255;
 
 //Declare constants to enumerate the port values.
-const byte INPUT1 = 0;
-const byte INPUT2 = 1;
+const byte INPUT1  = 0;
+const byte INPUT2  = 1;
 const byte OUTPUT1 = 2;
 const byte OUTPUT2 = 3;
 
-const byte DACPIN1[8] = { 9, 8, 7, 6, 5, 4, 3, 2 };
+const byte DACPIN1[8] = { 2, 3, 4, 5, 9, 8, 7, 6 };
 const byte DACPIN2[8] = {A2, A3, A4, A5, A1, A0, 11, 10};
 const byte SENSOR1 = A6;
 const byte SENSOR2 = A7;
@@ -75,21 +75,6 @@ void setup()
 //Main program manages setting/reading of ports via serial.
 void loop() 
 {
-  /*
-  if ( Serial.available () > 0 )
-  {
-    int input = Serial.parseInt ();
-    Serial.println ( input );
-    dataByte = (byte)input;
-
-    Serial.println ( "Receieved: " );
-    Serial.println ( dataByte, DEC ); 
-    Serial.println ( dataByte, BIN );
-    outputToDAC1 ( dataByte );
-  }
-
-  delay ( 100 );
-  */
 
   if (Serial.available() >= 4) // Check that a full package of four bytes has arrived in the buffer.
   {

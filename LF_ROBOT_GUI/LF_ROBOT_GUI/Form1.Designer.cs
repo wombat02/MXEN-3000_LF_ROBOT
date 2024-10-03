@@ -148,7 +148,7 @@ namespace LF_ROBOT_GUI
             textBox_portSelect.Name = "textBox_portSelect";
             textBox_portSelect.Size = new Size(49, 23);
             textBox_portSelect.TabIndex = 9;
-            textBox_portSelect.Text = "COM3";
+            textBox_portSelect.Text = "COM16";
             // 
             // button_trackpadEnable
             // 
