@@ -1,7 +1,7 @@
 using RJCP.IO.Ports;
 using System.Numerics;
 using System.Runtime.Serialization;
-
+using System.Timers
 
 namespace LF_ROBOT_GUI
 {
@@ -20,6 +20,20 @@ namespace LF_ROBOT_GUI
 
         const int OP_CMP_MIN_2 = 36;
         const int OP_CMP_MAX_2 = 255;
+
+        const double MAX_DUTY_CYCLE = 0.65;
+        const double TURN_DC_CHANGE = 0.35;
+        const double K_P = 1.2;
+        const double K_I = 0.02;
+
+        double integral_error_left = 0.0;
+        double integral_error_right = 0.0;
+        double prev_error_left = 0.0;
+        double prev_error_right = 0.0;
+        double dt = 0.0;
+        double curr_dc_left = 0.5;
+        double curr_dc_right = 0.5;
+        
 
         // SERIAL COMMUNICATION
 
@@ -45,6 +59,7 @@ namespace LF_ROBOT_GUI
 
             // begin timer for regular updates 
             timer1.Start();
+            dt = timer1.Interval;
         }
 
         /// <summary>
@@ -104,6 +119,7 @@ namespace LF_ROBOT_GUI
                     else
                     {
                         /// TODO AUTOMATIC CONTROL / IDLE STATE
+                        AutomaticControlLoop();
 
                         msgTx (0, 0);
 
@@ -182,6 +198,66 @@ namespace LF_ROBOT_GUI
                 "X: {0}     Y: {1}    PORT2: {2}    PORT3: {3}",
                 joyPos.X.ToString("0.00"),
                 joyPos.Y.ToString("0.00"),
+                opcode_1,
+                opcode_2
+            );
+            statusLabel.Text = msg;
+        }
+
+        private void AutomaticControlLoop()
+        {
+            double curr_error_left;
+            double curr_error_right;
+            double goal_duty_left;
+            double goal_duty_right;
+
+            if (sensor_left==1)
+            {
+                if (sensor_right==1)
+                {
+                    goal_duty_left = MAX_DUTY_CYCLE;
+                    goal_duty_right = MAX_DUTY_CYCLE;
+                }
+                else
+                {
+                    goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
+                    goal_duty_right = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                }
+            }
+            else
+            {
+                if (sensor_right==1)
+                {
+                    goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                    goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
+                }
+                else
+                {
+                    goal_duty_left = MAX_DUTY_CYCLE;
+                    goal_duty_right = MAX_DUTY_CYCLE;
+                }
+            }
+            Math.clamp(goal_duty_left,0.0,1.0);
+            Math.clamp(goal_duty_right,0.0,1.0);
+
+            curr_error_left = goal_duty_left - curr_dc_left;
+            curr_error_right = goal_duty_right - curr_dc_right;
+            integral_error_left = dt * (prev_error_left + curr_error_left) / 2.0;
+            integral_error_right = dt * (prev_error_right + curr_error_right) / 2.0;
+
+            curr_dc_left = curr_error_left * K_P + integral_error_left * K_I;
+            curr_dc_right = curr_error_right * K_P + integral_error_left * K_I;
+
+            int opcode_left = (int)(curr_dc_left * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
+            int opcode_right = (int)(curr_dc_right * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
+
+            // send OPCode to DAC outputs
+            msgTx(2, (byte)opcode_1);
+            msgTx(3, (byte)opcode_2);
+
+            // create message text to display joystick params on the status label
+            String msg = String.Format(
+                "PORT2: {0}    PORT3: {1}",
                 opcode_1,
                 opcode_2
             );
