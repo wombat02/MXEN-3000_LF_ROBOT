@@ -20,6 +20,11 @@ namespace LF_ROBOT_GUI
         private UInt16 _size = 300; // size of joystick (px)
 
         public Vector2 getPosRaw() { return new Vector2(_knobPosition.X, _knobPosition.Y); }
+        
+        /// <summary>
+        /// Return a new Vector2 with X and Y ranging from -1 to 1
+        /// </summary>
+        /// <returns></returns>
         public Vector2 getPosNormalised ()
         {
             return new Vector2(_knobPosition.X - _center.X, _knobPosition.Y - _center.Y) / ( Math.Max ( Width, Height ) / 2 - _knobRadius );
@@ -28,10 +33,10 @@ namespace LF_ROBOT_GUI
         public JoystickControl()
         {
             InitializeComponent();
-            this.DoubleBuffered = true; // Reduce flicker during painting
+            this.DoubleBuffered = true;                             // Reduce flicker during painting
             _center = new Point(this.Width / 2, this.Height / 2);
-            _knobPosition = _center; // Start with knob at the center
-            this.BackColor = Color.Gray; // Background color for the joystick area
+            _knobPosition = _center;                                // Start with knob at the center
+            this.BackColor = Color.Gray;                            // Background color for the joystick area
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -64,6 +69,7 @@ namespace LF_ROBOT_GUI
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
+            
             // Reset knob position to center when mouse is released
             _knobPosition = _center;
             Invalidate(); // Redraw the control

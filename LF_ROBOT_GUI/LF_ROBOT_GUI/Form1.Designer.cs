@@ -58,7 +58,7 @@ namespace LF_ROBOT_GUI
             joystickControl.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             joystickControl.BackColor = Color.Gray;
             joystickControl.Enabled = false;
-            joystickControl.Location = new Point(311, 76);
+            joystickControl.Location = new Point(615, 141);
             joystickControl.Name = "joystickControl";
             joystickControl.Size = new Size(300, 300);
             joystickControl.TabIndex = 1;
@@ -104,9 +104,9 @@ namespace LF_ROBOT_GUI
             // statusStrip1
             // 
             statusStrip1.Items.AddRange(new ToolStripItem[] { statusLabel });
-            statusStrip1.Location = new Point(0, 380);
+            statusStrip1.Location = new Point(0, 444);
             statusStrip1.Name = "statusStrip1";
-            statusStrip1.Size = new Size(674, 22);
+            statusStrip1.Size = new Size(927, 22);
             statusStrip1.TabIndex = 6;
             statusStrip1.Text = "statusStrip1";
             // 
@@ -152,7 +152,7 @@ namespace LF_ROBOT_GUI
             // 
             // button_trackpadEnable
             // 
-            button_trackpadEnable.Location = new Point(418, 27);
+            button_trackpadEnable.Location = new Point(719, 92);
             button_trackpadEnable.Name = "button_trackpadEnable";
             button_trackpadEnable.Size = new Size(92, 23);
             button_trackpadEnable.TabIndex = 12;
@@ -162,7 +162,7 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_pwmDuty
             // 
-            textBox_pwmDuty.Location = new Point(205, 234);
+            textBox_pwmDuty.Location = new Point(150, 330);
             textBox_pwmDuty.Name = "textBox_pwmDuty";
             textBox_pwmDuty.Size = new Size(45, 23);
             textBox_pwmDuty.TabIndex = 13;
@@ -170,7 +170,7 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_voltage
             // 
-            textBox_voltage.Location = new Point(205, 273);
+            textBox_voltage.Location = new Point(150, 369);
             textBox_voltage.Name = "textBox_voltage";
             textBox_voltage.Size = new Size(45, 23);
             textBox_voltage.TabIndex = 14;
@@ -178,7 +178,7 @@ namespace LF_ROBOT_GUI
             // 
             // button_pwm
             // 
-            button_pwm.Location = new Point(67, 234);
+            button_pwm.Location = new Point(12, 330);
             button_pwm.Name = "button_pwm";
             button_pwm.Size = new Size(109, 23);
             button_pwm.TabIndex = 15;
@@ -188,7 +188,7 @@ namespace LF_ROBOT_GUI
             // 
             // button_setVoltage
             // 
-            button_setVoltage.Location = new Point(67, 273);
+            button_setVoltage.Location = new Point(12, 369);
             button_setVoltage.Name = "button_setVoltage";
             button_setVoltage.Size = new Size(109, 23);
             button_setVoltage.TabIndex = 16;
@@ -201,7 +201,7 @@ namespace LF_ROBOT_GUI
             label1.AutoSize = true;
             label1.BackColor = SystemColors.Info;
             label1.Font = new Font("Segoe UI", 12F);
-            label1.Location = new Point(67, 194);
+            label1.Location = new Point(12, 290);
             label1.Name = "label1";
             label1.Size = new Size(122, 21);
             label1.TabIndex = 17;
@@ -209,14 +209,14 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_byteOutput
             // 
-            textBox_byteOutput.Location = new Point(205, 311);
+            textBox_byteOutput.Location = new Point(150, 407);
             textBox_byteOutput.Name = "textBox_byteOutput";
             textBox_byteOutput.Size = new Size(45, 23);
             textBox_byteOutput.TabIndex = 18;
             // 
             // button_byteOutput
             // 
-            button_byteOutput.Location = new Point(67, 311);
+            button_byteOutput.Location = new Point(12, 407);
             button_byteOutput.Name = "button_byteOutput";
             button_byteOutput.Size = new Size(109, 23);
             button_byteOutput.TabIndex = 19;
@@ -228,7 +228,7 @@ namespace LF_ROBOT_GUI
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(674, 402);
+            ClientSize = new Size(927, 466);
             Controls.Add(button_byteOutput);
             Controls.Add(textBox_byteOutput);
             Controls.Add(label1);

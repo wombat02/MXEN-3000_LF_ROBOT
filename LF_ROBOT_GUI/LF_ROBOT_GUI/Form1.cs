@@ -8,23 +8,28 @@ namespace LF_ROBOT_GUI
     public partial class Form1 : Form
     {
 
-
-
         // behavior constants
-        const double VREF      = 15.0;     // Reference voltage 
-        const double V_CMP_MIN = 1.4;      // compare setpoint minimum
-        const double V_CMP_MAX = 12.15;    // 
-        const double VCC       = 18.0;     // Magnitude of the supply voltage
+        const double VREF = 15.0;           // Reference voltage 
+        const double V_CMP_MIN = 1.4;       // compare setpoint minimum
+        const double V_CMP_MAX = 12.15;     // 
+        const double VCC = 15.0;            // Magnitude of the supply voltage
+
+
+        const int OP_CMP_MIN_1 = 79;
+        const int OP_CMP_MAX_1 = 255;
+
+        const int OP_CMP_MIN_2 = 36;
+        const int OP_CMP_MAX_2 = 255;
 
         // SERIAL COMMUNICATION
 
         // rx / tx buffers
         byte[] Outputs = new byte[4];
-        byte[] Inputs  = new byte[4];
+        byte[] Inputs = new byte[4];
 
         // data constants 
         const byte START = 255;
-        const byte ZERO  =   0;
+        const byte ZERO = 0;
 
         private SerialPortStream serial; // nuGet package for .NET >= 5.0
 
@@ -37,7 +42,7 @@ namespace LF_ROBOT_GUI
         public Form1()
         {
             InitializeComponent();
-            
+
             // begin timer for regular updates 
             timer1.Start();
         }
@@ -51,7 +56,7 @@ namespace LF_ROBOT_GUI
         private void Form1_Load(object sender, EventArgs e)
         {
             // display a welcome message on the gui
-            statusLabel.Text = DateTime.Now.ToShortDateString () + " Welcome to the LF_GUI. Make a serial connection to arduino board to get started!";
+            statusLabel.Text = DateTime.Now.ToShortDateString() + " Welcome to the LF_GUI. Make a serial connection to arduino board to get started!";
         }
 
         private void Form1_OnClosing(Object sender, FormClosingEventArgs e)
@@ -62,11 +67,11 @@ namespace LF_ROBOT_GUI
                 // close active stream
                 if (serial.IsOpen)
                 {
-                    serial.Close ();
+                    serial.Close();
                 }
 
                 // give back resources to system
-                serial.Dispose ();
+                serial.Dispose();
             }
         }
 
@@ -89,7 +94,7 @@ namespace LF_ROBOT_GUI
                 if (serial.IsOpen)
                 {
                     // SERIAL PORT IS OPEN
-                    statusLabel.Text = serial.PortName.ToString() + ": CONNECTED";
+                    //statusLabel.Text = serial.PortName.ToString() + ": CONNECTED";
 
                     if (joystickControl.Enabled)
                     {
@@ -99,17 +104,55 @@ namespace LF_ROBOT_GUI
                     else
                     {
                         /// TODO AUTOMATIC CONTROL / IDLE STATE
+
+                        msgTx (0, 0);
+
+
+                        if (serial.BytesToRead >= 4)
+                        {
+                            byte[] rxBuf = { 0, 0, 0, 0 };
+                            
+                            try
+                            {
+                                // full packet available
+                                int bytes_read = serial.Read(rxBuf, 0, rxBuf.Length);
+                                //statusLabel.Text = bytes_read.ToString();
+                            }
+                            catch (Exception ex)
+                            {
+                                statusLabel.Text = ex.Message;
+                            }
+
+                            if (rxBuf[0] == START)
+                            {
+                                // confirm checksum
+                                int checksum = START + rxBuf[1] + rxBuf[2];
+
+                                if (checksum == rxBuf[3])
+                                {
+                                    // packet is valid
+
+                                    statusLabel.Text = rxBuf[2].ToString();
+                                }
+                                else
+                                {
+                                    statusLabel.Text = "CHECKSUM ERROR: INVALID RX";
+                                }
+
+                                statusLabel.Text = rxBuf[2].ToString();
+                            }
+                        }
                     }
                 }
                 else
                 {
                     // SERIAL PORT IS CLOSED
-                    statusLabel.Text = serial.PortName.ToString() + ": NO CONNECTION";
+                    statusLabel.Text = "SERIAL CLOSED";
                 }
             }
         }
 
-        private void ManualControlLoop ()
+        private void ManualControlLoop()
         {
             /// TODO
             /// L / R motor mixing with x / y joystick chanels
@@ -117,40 +160,30 @@ namespace LF_ROBOT_GUI
             // Tx joystick y chanel as target pwm
             // interpolate cmp_voltage from CMP_MIN to CMP_MAX as duty ranges from 0 to 1
 
-            // horizontal = x
-            // vertical   = y
-            //11111111111111111               
-            //1               1
-            //1               1
-            //1      0        1
-            //1               1
-            //11111111111111111
 
+            Vector2 joyPos = joystickControl.getPosNormalised();
 
-            /// zero position is 73 as a value
-            /// either change to using byte interpolation or adjust the V_CMP_MIN / MAX values accordingly
-            /// may need to have one set for each PORT
+            float ch_1 = joyPos.Y / 2.0f + 0.5f;
+            float ch_2 = joyPos.Y / 2.0f + 0.5f;
 
-
-            Vector2 joystickPos = joystickControl.getPosNormalised();
-            double duty = joystickPos.Y / 2.0 + 0.5;
-            double cmp_voltage = duty * (V_CMP_MAX - V_CMP_MIN) + V_CMP_MIN;
+            int opcode_1 = (int)(ch_1 * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
+            int opcode_2 = (int)(ch_2 * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
 
             // convert interpolated compare voltage to an opcode
-            int opcode = (int)(255.0 * (cmp_voltage / VREF));
+            //int opcode = (int)(255.0 * (cmp_voltage / VREF));
+
 
             // send OPCode to DAC outputs
-            msgTx(2, (byte)opcode);
-            msgTx(3, (byte)opcode);
+            msgTx(2, (byte)opcode_1);
+            msgTx(3, (byte)opcode_2);
 
             // create message text to display joystick params on the status label
             String msg = String.Format(
-                "Duty: {0}     X: {1}     Y: {2}    PORT2: {3}    PORT3: {4}",
-                duty.ToString("0.00"),
-                joystickPos.X.ToString("0.00"),
-                joystickPos.Y.ToString("0.00"),
-                opcode,
-                opcode
+                "X: {0}     Y: {1}    PORT2: {2}    PORT3: {3}",
+                joyPos.X.ToString("0.00"),
+                joyPos.Y.ToString("0.00"),
+                opcode_1,
+                opcode_2
             );
             statusLabel.Text = msg;
         }
@@ -165,7 +198,7 @@ namespace LF_ROBOT_GUI
             int baud = 9600; // default baud rate
 
             // parse baud rate from text input
-            try
+            try 
             {
                 int.Parse(textBox_baudSelect.Text);
             }
@@ -193,11 +226,6 @@ namespace LF_ROBOT_GUI
             try
             {
                 serial.Open();
-
-                // send command for 50% duty cycle
-                double cmp_voltage = 0.5 * (V_CMP_MAX - V_CMP_MIN) + V_CMP_MIN;
-                int opcode = (int)(255.0 * (cmp_voltage / VREF));
-                msgTx(2, (byte)opcode);
             }
             catch (Exception e)
             {
@@ -219,7 +247,7 @@ namespace LF_ROBOT_GUI
             Outputs[1] = PORT;                          //Set the second byte to represent the port where, Input 1 = 0, Input 2 = 1, Output 1 = 2 & Output 2 = 3. This could be enumerated to make writing code simpler... (see Arduino driver)
             Outputs[2] = DATA;                          //Set the third byte to the value to be assigned to the port. This is only necessary for outputs, however it is best to assign a consistent value such as 0 for input ports.
             Outputs[3] = (byte)(START + PORT + DATA);   //Calculate the checksum byte, the same calculation is performed on the Arduino side to confirm the message was received correctly.
-            
+
             try
             {
                 if (serial != null)
@@ -259,7 +287,16 @@ namespace LF_ROBOT_GUI
             {
                 // open serial port
                 InitializeSerialPortStream();
-            } 
+
+                // send stop command
+                if ( serial != null )
+                {
+                    if (serial.IsOpen )
+                    { 
+                        SendStopCommand();
+                    }
+                }
+            }
         }
 
         private void button_setVoltage_Click(object sender, EventArgs e)
@@ -283,7 +320,7 @@ namespace LF_ROBOT_GUI
 
 
             // convert output voltage reqest to its corresponding compare voltage
-            //float cmp_interpollated = (float)((voltage - (-VCC)) * (V_CMP_MAX - V_CMP_MIN) / (2 * VCC) + V_CMP_MIN);
+            // float cmp_interpollated = (float)((voltage - (-VCC)) * (V_CMP_MAX - V_CMP_MIN) / (2 * VCC) + V_CMP_MIN);
 
             statusLabel.Text = "CMP: " + cmp_voltage;
             int opcode = (int)(255.0 * (cmp_voltage / VREF));
@@ -311,20 +348,20 @@ namespace LF_ROBOT_GUI
             duty = double.Clamp(duty, 0.0, 100.0);
 
             // interpolate cmp_voltage from CMP_MIN to CMP_MAX as duty ranges from 0 to 1
-            double cmp_voltage = (duty/100.0) * (V_CMP_MAX - V_CMP_MIN) + V_CMP_MIN;
+            double cmp_voltage = (duty / 100.0) * (V_CMP_MAX - V_CMP_MIN) + V_CMP_MIN;
 
             // convert interpolated compare voltage to an opcode
-            int opcode = (int)( 255.0 * (cmp_voltage / VREF) );
+            int opcode = (int)(255.0 * (cmp_voltage / VREF));
 
             // send OPCode
             // TEST use PORT 2 to output on ARDUINO's DAC 1
-            msgTx ( 2, (byte)opcode );
+            msgTx(2, (byte)opcode);
         }
 
         private void button_trackpadEnable_Click(object sender, EventArgs e)
         {
             // toggle enable flag for the joystick element
-            joystickControl.Enabled = !joystickControl.Enabled; 
+            joystickControl.Enabled = !joystickControl.Enabled;
 
             // update enable button text
             button_trackpadEnable.Text = joystickControl.Enabled ? "Disable" : "Enable";
@@ -345,7 +382,7 @@ namespace LF_ROBOT_GUI
             {
                 code = int.Parse(textBox_byteOutput.Text);
 
-                if ( code < 0 || code > 255 )
+                if (code < 0 || code > 255)
                 {
                     code = 127; // reset code to 1/2 
                 }
@@ -359,6 +396,20 @@ namespace LF_ROBOT_GUI
             // send OPCode
             // TEST use PORT 2 to output on ARDUINO's DAC 1
             msgTx(2, (byte)code);
+        }
+
+
+
+        /// <summary>
+        /// TX to both DAC PORTS the 50% duty cycle command to stop the robot.
+        /// </summary>
+        void SendStopCommand ()
+        {
+            int opcode_1 = (int)(0.5f * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
+            int opcode_2 = (int)(0.5f * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
+
+            msgTx(2, (byte) opcode_1);
+            msgTx(3, (byte) opcode_2);
         }
     }
 }
