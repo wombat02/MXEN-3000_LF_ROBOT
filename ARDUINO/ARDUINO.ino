@@ -20,16 +20,16 @@
 //      GLOBALS
 
 //Declare variables for storing the port values. 
-byte output1 = 255;
-byte output2 = 255;
-byte input1  = 0;
-byte input2  = 0;
+byte _output1 = 255;
+byte _output2 = 255;
+byte _sensor_l  = 0;
+byte _sensor_r  = 0;
 
 //Declare variables for each byte of the message.
-byte startByte   = 0;
-byte commandByte = 0;
-byte dataByte    = 0;
-byte checkByte   = 0;
+byte _start_byte   = 0;
+byte _id_byte = 0;
+byte _data_byte    = 0;
+byte _check_byte   = 0;
 
 //Declare variable for calculating the check sum which is used to confirm that the correct bytes were identified as the four message bytes.
 byte checkSum = 0;
@@ -37,30 +37,36 @@ byte checkSum = 0;
 
 //      SERIAL CONFIG
 
-
-//Declare a constant for the start byte ensuring that the value is static.
-const byte START = 255;
-
 #define SERIAL_BAUD 9600
+
+// Serial communication Start codes
+const byte START_DATA = 0xFF;
+const byte START_CMD  = 0xFE;
+
+enum SERIAL_CMD_MSG_ID
+{
+  DAC0,
+  DAC1,
+  STOP
+};
+
+enum SERIAL_DATA_MSG_ID
+{
+  SENSOR_L,
+  SENSOR_R,
+  FSM_STATE
+};
 
 uint32_t next_tx_time_ms = 0;
 const uint16_t tx_time_interval_ms = 25;
 
-// Declare PORT ID enumeration
-enum SERIAL_PORT_ID
-{
-  INPUT1,
-  INPUT2,
-  OUTPUT1,
-  OUTPUT2
-};
 
 //      PINS
 
 const byte DACPIN1[8] = { 2, 3, 4, 5, 9, 8, 7, 6 };
 const byte DACPIN2[8] = { A2, A3, A4, A5, A1, A0, 11, 10 };
-const byte SENSOR1 = A6;
-const byte SENSOR2 = A7;
+const byte PIN_SENSOR_L = A6;
+const byte PIN_SENSOR_R = A7;
 
 
 
@@ -70,6 +76,14 @@ const byte SENSOR2 = A7;
 // define constants to stop the DAC for each output
 const byte DAC1_OP_STOP = 167;
 const byte DAC2_OP_STOP = 145;
+
+
+
+// FSM 
+
+enum FSM_STATES { DISABLE, IDLE, AUTO, MANUAL };
+FSM_STATES _fsm_state; // instance of FSM enum to keep track of the robot's current state
+
 
 
 
@@ -96,6 +110,9 @@ void transmit_input_command_response ( int reading, byte CMD );
 //#################################################################################################//
 void setup() 
 {
+  // ensure the robot is started in the disabled state
+  _fsm_state = FSM_STATES::DISABLE;
+
   // setup arduino pins
   init_DACs ();
   init_sensors ();
@@ -124,23 +141,38 @@ void loop()
     // ensure the robot stops if no serial connection is established
     // this will prevent runaway if connection to the GUI is lost
     stop_robot ();
+    _fsm_state = FSM_STATES::DISABLE; // ensure that the state reflects the loss of COMS
   }
   else
   {
-    // serial connection is established, handle communications with GUI
-    handle_serial_comms ();
 
-    int in1 = analogRead ( SENSOR1 );
-    int in2 = analogRead ( SENSOR2 );
+    // handle parsing received data over Serial
+    handle_serial_rx ();
 
-    if ( time_ms >= next_tx_time_ms )
+
+    switch ( _fsm_state )
     {
-      next_tx_time_ms = time_ms + tx_time_interval_ms;
-    
-      char buf [255] = { 0 };
-      
-      sprintf ( buf, "1: [ %d ]\t2: [ %d ]\n", in1, in2 );
-      Serial.write ( buf );
+      case DISABLE:
+        // blink on-board LED
+        // ensure motors are stopped
+      break;
+
+      case IDLE:
+        // check timing of last received heartbeat msg time to determine if comms are still operational
+        // handle sending sensor data
+      break;
+
+      case AUTO:
+        // check heartbeat timing for loss of comms
+        // send sensor data
+        // send state heartbeat
+      break;
+
+      case MANUAL:
+        // check heartbeat timing for loss of comms
+        // send sensor data
+        // send state heartbeat
+      break;
     }
   }
 }
@@ -158,8 +190,8 @@ void init_DACs()
 /// @brief Initialise PINMODE for ALL SENSOR PINs
 void init_sensors ()
 {
-  pinMode ( SENSOR1, INPUT );
-  pinMode ( SENSOR2, INPUT );
+  pinMode ( PIN_SENSOR_L, INPUT );
+  pinMode ( PIN_SENSOR_R, INPUT );
 }
 
 /// @brief Send the 0V command to both DACs 
@@ -206,67 +238,60 @@ byte bitFlip(byte value)
 //                                      SERIAL COMMUNICATION
 //#################################################################################################//
 
-/// @brief handle reading the serial stream, parsing the START byte and confirming the checksum to ensure packets are valid
-void handle_serial_comms ()
+
+void handle_serial_rx ()
 {
   if (Serial.available() >= 4) // Check that a full package of four bytes has arrived in the buffer.
   {
-    startByte = Serial.read (); // Get the first available byte from the buffer, assuming that it is the start byte.
+    _start_byte = Serial.read (); // Get the first available byte from the buffer, assuming that it is the start byte.
 
-    if ( startByte == START ) // Confirm that the first byte was the start byte, otherwise begin again checking the next byte.
+    if ( _start_byte == START_CMD || _start_byte == START_DATA )
     {
       //Read the remaining three bytes of the package into the respective variables.
-      commandByte = Serial.read();
-      dataByte    = Serial.read();
-      checkByte   = Serial.read();
+      _id_byte     = Serial.read();
+      _data_byte   = Serial.read();
+      _check_byte  = Serial.read();
 
-      checkSum = startByte + commandByte + dataByte; // Calculate the check sum, this is also calculated in visual studio and is sent as he final byte of the package.
-
-      if(checkByte == checkSum) //Confirm that the calculated and sent check sum match, if so it is safe to process the data.
+      // Calculate the check sum, this is also calculated in visual studio and is sent as he final byte of the package.
+      checkSum = _start_byte + _id_byte + _data_byte; 
+    
+      if ( checkSum == _check_byte )
       {
-        handle_valid_packet ();
+        if ( _start_byte == START_CMD )
+        {
+          // HANDLE CMD MSG
+          handle_cmd_msg_rx ();
+        }
+        else 
+        {
+          // HANDLE DATA MSG
+
+          // IS THIS ACTUALLY NEEDED HERE? 
+
+          // WHAT DATA WOULD BE SENT TO THE NANO FROM THE GUI?
+        }
       }
-    }    
+    }
   }
 }
 
-/// @brief Parse a valid packet and perform relevent actions based on the received command byte
-void handle_valid_packet ()
+void handle_cmd_msg_rx ()
 {
-  //Check the command byte to determine which port is being called and respond accordingly.           
-  switch ( commandByte )
+  switch ( _id_byte )
   {
-    case INPUT1: //In the case of Input 1 the value is read from pin A5 and sent back in the same four byte package format.
-    {
-      input1 = digitalRead ( SENSOR1 );
-      transmit_input_command_response ( input1, commandByte );
-    }          
+    case DAC0:
+      _output1 = _data_byte;
+      output_DAC_1 ( _output1 );
     break;
 
-    case INPUT2: //Input 2 is the same as Input 1, but read from pin A4
-    {
-      input2 = digitalRead ( SENSOR2 );
-      transmit_input_command_response ( input2, commandByte );
-    }               
-    break;
-    
-    case OUTPUT1: //For Output 1 the value of the data byte is written to pins in DACPIN1.
-    {
-      output1 = dataByte;   
-      output_DAC_1(output1); 
-    } 
-    break;
-    
-    case OUTPUT2: //For Output 2 the value of the data byte is written to pins in DACPIN2.
-    {
-      output2 = dataByte;  
-      output_DAC_2(output2);
-    }         
+    case DAC1:
+      _output2 = _data_byte;
+      output_DAC_2 ( _output2 );
     break;
 
-    // unrecognised commands are discarded
-    default: 
-      break;
+    case STOP:
+      stop_robot ();
+    break;
   }
 }
 
@@ -275,10 +300,26 @@ void handle_valid_packet ()
 /// @param CMD Command byte to echo back ( see SERIAL_PORT_ID )
 void transmit_input_command_response ( int reading, byte CMD )
 {
-  const int checkSum = START + commandByte + reading; //Calculate the check sum.
+  const int checkSum = START + _id_byte + reading; //Calculate the check sum.
 
   Serial.write(START);       //Send the start byte indicating the start of a package.
   Serial.write(CMD);         //Echo the command byte to inform Visual Studio which port value is being sent.
   Serial.write(reading);     //Send the value read.
   Serial.write(checkSum);    //Send the check sum.
+}
+
+
+void transmit_sensor_data ()
+{
+  
+}
+
+
+void poll_sensors ()
+{
+  int sensor_l_raw = analogRead ( PIN_SENSOR_L );
+  int sensor_r_raw = analogRead ( PIN_SENSOR_R );
+
+  // crunch 10bit adc values into 1 byte
+
 }
