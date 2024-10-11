@@ -3,6 +3,14 @@ using System.Numerics;
 using System.Runtime.Serialization;
 using System.Timers;
 
+// enum for use in remembering the previous sensor state
+enum SensorState{
+    NEITHER_ON_LINE,
+    RIGHT_ON_LINE,
+    LEFT_ON_LINE,
+    BOTH_ON_LINE,
+}
+
 namespace LF_ROBOT_GUI
 {
     public partial class Form1 : Form
@@ -26,17 +34,24 @@ namespace LF_ROBOT_GUI
 
         double MAX_DUTY_CYCLE = 0.65;
         double TURN_DC_CHANGE = 0.35;
-        double K_P = 1.2;
-        double K_I = 0.02;
+
+        // Did quick simulation in excel to get these values (based on dt = 0.001)
+        double K_P = 0.01;  // Increase/decrease to increase/decrease rise time
+        double K_I = 110;   // Tune for specific dt and K_P to eliminate overshoot
 
         double integral_error_left = 0.0;
         double integral_error_right = 0.0;
         double prev_error_left = 0.0;
         double prev_error_right = 0.0;
-        double dt = 0.0;
-        double curr_dc_left = 0.5;
-        double curr_dc_right = 0.5;
+        double dt = 0.0;    // Time since last update of the DC in the PI control loop
+        double curr_dc_left = 0.5; // Current DC for left motor
+        double curr_dc_right = 0.5; // Current DC for right motor
 
+        // Previous and current sensor states and time in state - will only update when state changes
+        SensorState prev_sensor_state = SensorState.NEITHER_ON_LINE;
+        SensorState curr_sensor_state = SensorState.NEITHER_ON_LINE;
+        double time_in_prev_state = 0.0;
+        double time_in_curr_state = 0.0;
 
         // SERIAL COMMUNICATION
 
@@ -62,7 +77,10 @@ namespace LF_ROBOT_GUI
 
             // begin timer for regular updates 
             timer1.Start();
-            dt = timer1.Interval;
+            /* dt = timer1.Interval; 
+                --> REMOVED SINCE dt SHOULD BE TIME SINCE LAST UPDATE OF THE DUTY CYCLE
+                --> IF THE TIMER TICKS AND THERE ARE NO NEW VALID PACKETS, DC WON'T BE UPDATED
+            */
         }
 
         /// <summary>
@@ -81,6 +99,11 @@ namespace LF_ROBOT_GUI
 
             sensor_left  = -1;
             sensor_right = -1;
+
+            prev_sensor_state = SensorState.NEITHER_ON_LINE;
+            curr_sensor_state = SensorState.NEITHER_ON_LINE;
+            time_in_prev_state = 0.0;
+            time_in_curr_state = 0.0;
         }
 
         private void Form1_OnClosing(Object sender, FormClosingEventArgs e)
@@ -113,6 +136,11 @@ namespace LF_ROBOT_GUI
         /// <param name="e"></param>
         private void timer1_Tick(object sender, EventArgs e)
         {
+            // Need to increment these every tick
+            dt += timer1.Interval;  // Will get reset to zero again if joystick enabled
+            time_in_prev_state += timer1.Interval;
+            time_in_curr_state += timer1.Interval
+
             if (serial != null)
             {
                 if (serial.IsOpen)
@@ -185,6 +213,8 @@ namespace LF_ROBOT_GUI
                     {
                         // send joystick commands to the robot for manual control
                         ManualControlLoop();
+
+                        dt = 0.0; // Want to make sure dt isn't incrementing when not in auto mode
                     }
                     else
                     {
@@ -247,33 +277,158 @@ namespace LF_ROBOT_GUI
             double goal_duty_left;
             double goal_duty_right;
 
+            SensorState this_sensor_state;
 
+            // Determine sensor state in this iteration of the control loop
             if (sensor_left == 1)
             {
+                // Case when sensors on either side of line OR robot off track
                 if (sensor_right == 1)
                 {
-                    goal_duty_left = MAX_DUTY_CYCLE;
-                    goal_duty_right = MAX_DUTY_CYCLE;
+                    this_sensor_state = SensorState.NEITHER_ON_LINE
                 }
+                // Case when right sensor on line - turn right
                 else
                 {
-                    goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-                    goal_duty_right = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                    this_sensor_state = SensorState.RIGHT_ON_LINE
                 }
             }
             else
-            {
+            {  
+                // Case when left sensor on line - turn left
                 if (sensor_right == 1)
                 {
+                    this_sensor_state = SensorState.LEFT_ON_LINE
+                }
+                // Case when both sensors on the line - turn left/right depending on previous movement
+                else
+                {
+                    this_sensor_state = SensorState.BOTH_ON_LINE
+                }
+            }
+
+            // Check if sensor state has changed since previous iteration of the control loop
+            if (this_sensor_state != curr_sensor_state)
+            {
+                prev_sensor_state = curr_sensor_state;
+                curr_sensor_state = this_sensor_state;
+
+                time_in_prev_state = time_in_curr_state;
+                time_in_curr_state = 0.0;
+            }
+
+
+            // CURRENTLY NOT USING THE TIME SPENT IN THE CURR AND PREV STATE
+            /* 
+            Determine goal duty cycles based on current and 
+            previous sensor states, and current duty cycles 
+            */
+            switch (curr_sensor_state) {
+                // Robot either over the line (go straight) or off the line
+                case (SensorState.NEITHER_ON_LINE) 
+                {
+                    // Robot came back to over the line OR is off line but is coming back over
+                    if ((curr_dc_left > curr_dc_right && prev_sensor_state==SensorState.RIGHT_ON_LINE)
+                        || (curr_dc_right > curr_dc_left && prev_sensor_state==SensorState.LEFT_ON_LINE)
+                        || (curr_dc_left == curr_dc_right))
+                    {
+                        // ACCOUNT FOR SHARP CORNERS - MIGHT NEED TO CHANGE THIS
+                        // If difference in duty cycle between left and right motors is greater
+                        // than the value added/subtract from maximum duty cycle when tuning, this
+                        // means that the robot is trying to take a sharp corner, so want to keep doing this
+                        if ((curr_dc_left - curr_dc_right) > TURN_DC_CHANGE)
+                        {
+                            // Turn to right sharply
+                            goal_duty_left = MAX_DUTY_CYCLE + 1.2*TURN_DC_CHANGE;
+                            goal_duty_right = MAX_DUTY_CYCLE - 1.2*TURN_DC_CHANGE;      
+                        }
+                        else if ((curr_dc_right - curr_dc_left) > TURN_DC_CHANGE)
+                        {
+                            // Turn to left sharply
+                            goal_duty_left = MAX_DUTY_CYCLE - 1.2*TURN_DC_CHANGE;
+                            goal_duty_right = MAX_DUTY_CYCLE + 1.2*TURN_DC_CHANGE;      
+                        }
+                        // Otherwise if correctly straddling line
+                        else {
+                            // Go straight
+                            goal_duty_left = MAX_DUTY_CYCLE;
+                            goal_duty_right = MAX_DUTY_CYCLE;
+                        }
+                    }
+                    // Robot went off line to the right and is turning right
+                    else if (curr_dc_left > curr_dc_right && prev_sensor_state==SensorState.LEFT_ON_LINE)
+                    {
+                        // Stop robot
+                        curr_dc_left = 0.5;
+                        curr_dc_right = 0.5;
+
+                        // Turn to left
+                        goal_duty_left = MAX_DUTY_CYCLE - 1.2*TURN_DC_CHANGE;
+                        goal_duty_right = MAX_DUTY_CYCLE + 1.2*TURN_DC_CHANGE;
+                    }
+                    // Robot went off line to the left and is turning left
+                    else if (curr_dc_right > curr_dc_left && prev_sensor_state==SensorState.RIGHT_ON_LINE)
+                    {
+                        // Stop robot
+                        curr_dc_left = 0.5;
+                        curr_dc_right = 0.5;
+
+                        // Turn to right sharply
+                        goal_duty_left = MAX_DUTY_CYCLE + 1.2*TURN_DC_CHANGE;
+                        goal_duty_right = MAX_DUTY_CYCLE - 1.2*TURN_DC_CHANGE;
+                    }
+                    // Unknown state
+                    else 
+                    {
+                        // Stop robot
+                        curr_dc_left = 0.5;
+                        curr_dc_right = 0.5;
+
+                        // Spin on the spot slowly - hopefully find line again
+                        goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                        goal_duty_right = (1-MAX_DUTY_CYCLE) + TURN_DC_CHANGE;
+                    }
+                }
+                // Right sensor on the line
+                case (SensorState.RIGHT_ON_LINE) 
+                {
+                    // Turn right
+                    goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
+                    goal_duty_right = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                }
+                // Left sensor on the line
+                case (SensorState.LEFT_ON_LINE)
+                {
+                    // Turn left
                     goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
                     goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
                 }
-                else
+                // Both sensors on the line - need to determine which way currently turning
+                case (SensorState.BOTH_ON_LINE)
                 {
-                    goal_duty_left = MAX_DUTY_CYCLE;
-                    goal_duty_right = MAX_DUTY_CYCLE;
+                    // Robot was previously turning left
+                    if (prev_sensor_state==SensorState.LEFT_ON_LINE)
+                    {
+                        // Turn right
+                        goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
+                        goal_duty_right = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                    }
+                    // Robot was previously turning right
+                    else if (prev_sensor_state==SensorState.RIGHT_ON_LINE)
+                    {
+                        // Turn left
+                        goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                        goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
+                    }
+                    // Unlikely state, but handled anyway
+                    else 
+                    {
+                        goal_duty_left = MAX_DUTY_CYCLE;
+                        goal_duty_right = MAX_DUTY_CYCLE;
+                    }
                 }
             }
+
             double.Clamp(goal_duty_left, 0.0, 1.0);
             double.Clamp(goal_duty_right, 0.0, 1.0);
 
@@ -282,8 +437,13 @@ namespace LF_ROBOT_GUI
             integral_error_left = dt * (prev_error_left + curr_error_left) / 2.0;
             integral_error_right = dt * (prev_error_right + curr_error_right) / 2.0;
 
-            curr_dc_left = curr_error_left * K_P + integral_error_left * K_I;
-            curr_dc_right = curr_error_right * K_P + integral_error_left * K_I;
+            // FIXED THIS - WASN'T INCREMENTING IT BEFORE, WAS JUST SETTING THE curr_dc VALUES
+            curr_dc_left += curr_error_left * K_P + integral_error_left * K_I;
+            curr_dc_right += curr_error_right * K_P + integral_error_left * K_I;
+
+            // Clamp the duty cycles to [0.0, 1.0] just in case
+            double.Clamp(curr_dc_left, 0.0, 1.0);
+            double.Clamp(curr_dc_right, 0.0, 1.0);
 
             int opcode_left  = (int)( ( 1.0f - curr_dc_left ) * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
             int opcode_right = (int)(           curr_dc_right * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
