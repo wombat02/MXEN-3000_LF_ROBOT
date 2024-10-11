@@ -1,7 +1,7 @@
 using RJCP.IO.Ports;
 using System.Numerics;
 using System.Runtime.Serialization;
-using System.Timers
+using System.Timers;
 
 namespace LF_ROBOT_GUI
 {
@@ -21,10 +21,13 @@ namespace LF_ROBOT_GUI
         const int OP_CMP_MIN_2 = 36;
         const int OP_CMP_MAX_2 = 255;
 
-        const double MAX_DUTY_CYCLE = 0.65;
-        const double TURN_DC_CHANGE = 0.35;
-        const double K_P = 1.2;
-        const double K_I = 0.02;
+        double sensor_threshold = 64;
+        double sensor_left, sensor_right;
+
+        double MAX_DUTY_CYCLE = 0.65;
+        double TURN_DC_CHANGE = 0.35;
+        double K_P = 1.2;
+        double K_I = 0.02;
 
         double integral_error_left = 0.0;
         double integral_error_right = 0.0;
@@ -33,7 +36,7 @@ namespace LF_ROBOT_GUI
         double dt = 0.0;
         double curr_dc_left = 0.5;
         double curr_dc_right = 0.5;
-        
+
 
         // SERIAL COMMUNICATION
 
@@ -42,7 +45,7 @@ namespace LF_ROBOT_GUI
         byte[] Inputs = new byte[4];
 
         // data constants 
-        const byte START = 255;
+        const byte START = 0xFF;
         const byte ZERO = 0;
 
         private SerialPortStream serial; // nuGet package for .NET >= 5.0
@@ -72,6 +75,12 @@ namespace LF_ROBOT_GUI
         {
             // display a welcome message on the gui
             statusLabel.Text = DateTime.Now.ToShortDateString() + " Welcome to the LF_GUI. Make a serial connection to arduino board to get started!";
+
+            textBox_duty_sp.Text = MAX_DUTY_CYCLE.ToString();
+            textBox_duty_sp_delta_max.Text = TURN_DC_CHANGE.ToString();
+
+            sensor_left  = -1;
+            sensor_right = -1;
         }
 
         private void Form1_OnClosing(Object sender, FormClosingEventArgs e)
@@ -110,6 +119,67 @@ namespace LF_ROBOT_GUI
                 {
                     // SERIAL PORT IS OPEN
                     //statusLabel.Text = serial.PortName.ToString() + ": CONNECTED";
+                    /// HANDLE RX
+                    if (serial.BytesToRead >= 4)
+                    {
+                        byte[] rxBuf = { 0, 0, 0, 0 };
+
+                        try
+                        {
+                            // full packet available
+                            int bytes_read = serial.Read(rxBuf, 0, rxBuf.Length);
+                            /*
+                            statusLabel.Text = String.Format(
+                                "{0}  {1}  {2}  {3}",
+                                rxBuf[0], rxBuf[1], rxBuf[2], rxBuf[3]
+                            );
+                            */
+                        }
+                        catch (Exception ex)
+                        {
+                            //statusLabel.Text = ex.Message;
+                        }
+
+                        if (rxBuf[0] == START)
+                        {
+                            // confirm checksum
+                            // C# byte arithmetic is promoted to int
+                            // simulate overflow by masking with 0xFF
+                            byte checksum = (byte)((START + rxBuf[1] + rxBuf[2]) & 0xFF);
+
+                            if (checksum == rxBuf[3])
+                            {
+                                // packet is valid
+
+
+                                // HANDLE READING SENSOR VALUES
+                                switch (rxBuf[1])
+                                {
+                                    case 0:
+                                        // sensor 1
+
+                                        // value is between 0 and 255
+
+                                        // implement thresholding control through GUI
+                                        sensor_left = rxBuf[2];
+                                        //sensor_left = sensor_left > sensor_threshold ? 1 : 0;
+
+                                        break;
+
+                                    case 1:
+
+                                        sensor_right = rxBuf[2];
+                                        //sensor_left = sensor_left > sensor_threshold ? 1 : 0;
+
+                                        break;
+                                }
+                            }
+                            else
+                            {
+                                //statusLabel.Text = "CHECKSUM ERROR: INVALID RX";
+                            }
+                        }
+                    }
 
                     if (joystickControl.Enabled)
                     {
@@ -118,46 +188,12 @@ namespace LF_ROBOT_GUI
                     }
                     else
                     {
+                        // poll sensors
+                        msgTx(0, 0);
+                        msgTx(1, 0);
+
                         /// TODO AUTOMATIC CONTROL / IDLE STATE
                         AutomaticControlLoop();
-
-                        msgTx (0, 0);
-
-
-                        if (serial.BytesToRead >= 4)
-                        {
-                            byte[] rxBuf = { 0, 0, 0, 0 };
-                            
-                            try
-                            {
-                                // full packet available
-                                int bytes_read = serial.Read(rxBuf, 0, rxBuf.Length);
-                                //statusLabel.Text = bytes_read.ToString();
-                            }
-                            catch (Exception ex)
-                            {
-                                statusLabel.Text = ex.Message;
-                            }
-
-                            if (rxBuf[0] == START)
-                            {
-                                // confirm checksum
-                                int checksum = START + rxBuf[1] + rxBuf[2];
-
-                                if (checksum == rxBuf[3])
-                                {
-                                    // packet is valid
-
-                                    statusLabel.Text = rxBuf[2].ToString();
-                                }
-                                else
-                                {
-                                    statusLabel.Text = "CHECKSUM ERROR: INVALID RX";
-                                }
-
-                                statusLabel.Text = rxBuf[2].ToString();
-                            }
-                        }
                     }
                 }
                 else
@@ -211,9 +247,10 @@ namespace LF_ROBOT_GUI
             double goal_duty_left;
             double goal_duty_right;
 
-            if (sensor_left==1)
+
+            if (sensor_left == 1)
             {
-                if (sensor_right==1)
+                if (sensor_right == 1)
                 {
                     goal_duty_left = MAX_DUTY_CYCLE;
                     goal_duty_right = MAX_DUTY_CYCLE;
@@ -226,7 +263,7 @@ namespace LF_ROBOT_GUI
             }
             else
             {
-                if (sensor_right==1)
+                if (sensor_right == 1)
                 {
                     goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
                     goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
@@ -237,8 +274,8 @@ namespace LF_ROBOT_GUI
                     goal_duty_right = MAX_DUTY_CYCLE;
                 }
             }
-            Math.clamp(goal_duty_left,0.0,1.0);
-            Math.clamp(goal_duty_right,0.0,1.0);
+            double.Clamp(goal_duty_left, 0.0, 1.0);
+            double.Clamp(goal_duty_right, 0.0, 1.0);
 
             curr_error_left = goal_duty_left - curr_dc_left;
             curr_error_right = goal_duty_right - curr_dc_right;
@@ -248,18 +285,20 @@ namespace LF_ROBOT_GUI
             curr_dc_left = curr_error_left * K_P + integral_error_left * K_I;
             curr_dc_right = curr_error_right * K_P + integral_error_left * K_I;
 
-            int opcode_left = (int)(curr_dc_left * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
-            int opcode_right = (int)(curr_dc_right * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
+            int opcode_left  = (int)( ( 1.0f - curr_dc_left ) * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
+            int opcode_right = (int)(           curr_dc_right * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
 
             // send OPCode to DAC outputs
-            msgTx(2, (byte)opcode_1);
-            msgTx(3, (byte)opcode_2);
+            //msgTx(2, (byte)opcode_left);
+            //msgTx(3, (byte)opcode_right);
 
             // create message text to display joystick params on the status label
             String msg = String.Format(
-                "PORT2: {0}    PORT3: {1}",
-                opcode_1,
-                opcode_2
+                "PORT2: {0}    PORT3: {1}    L: {2}    R: {3}",
+                opcode_left,
+                opcode_right,
+                sensor_left,
+                sensor_right
             );
             statusLabel.Text = msg;
         }
@@ -274,9 +313,9 @@ namespace LF_ROBOT_GUI
             int baud = 9600; // default baud rate
 
             // parse baud rate from text input
-            try 
+            try
             {
-                int.Parse(textBox_baudSelect.Text);
+                baud = int.Parse(textBox_baudSelect.Text);
             }
             catch (Exception e)
             {
@@ -313,6 +352,9 @@ namespace LF_ROBOT_GUI
         private void SerialPortStream_DataReceived(Object sender, SerialDataReceivedEventArgs e)
         {
             // check and calculate checksum to determine data validity
+            
+            
+            
         }
 
         // Send a four byte message to the Arduino via serial.
@@ -365,10 +407,10 @@ namespace LF_ROBOT_GUI
                 InitializeSerialPortStream();
 
                 // send stop command
-                if ( serial != null )
+                if (serial != null)
                 {
-                    if (serial.IsOpen )
-                    { 
+                    if (serial.IsOpen)
+                    {
                         SendStopCommand();
                     }
                 }
@@ -479,13 +521,39 @@ namespace LF_ROBOT_GUI
         /// <summary>
         /// TX to both DAC PORTS the 50% duty cycle command to stop the robot.
         /// </summary>
-        void SendStopCommand ()
+        void SendStopCommand()
         {
             int opcode_1 = (int)(0.5f * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
             int opcode_2 = (int)(0.5f * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
 
-            msgTx(2, (byte) opcode_1);
-            msgTx(3, (byte) opcode_2);
+            msgTx(2, (byte)opcode_1);
+            msgTx(3, (byte)opcode_2);
+        }
+
+        private void textBox_duty_sp_TextChanged(object sender, EventArgs e)
+        {
+            // parse pwm %
+            try
+            {
+                MAX_DUTY_CYCLE = double.Parse(textBox_pwmDuty.Text);
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = ex.Message;
+            }
+        }
+
+        private void textBox_duty_sp_delta_max_TextChanged(object sender, EventArgs e)
+        {
+            // parse pwm %
+            try
+            {
+                TURN_DC_CHANGE = double.Parse(textBox_pwmDuty.Text);
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = ex.Message;
+            }
         }
     }
 }
