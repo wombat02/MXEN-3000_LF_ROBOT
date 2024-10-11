@@ -19,6 +19,11 @@
 
 //      GLOBALS
 
+/// @warning enabling this bit will disable regular robot communications!
+/// This will force the robot to only transmit the sensors data in a readible form for calibration
+#define DEBUG_OVERRIDE 0
+
+
 //Declare variables for storing the port values. 
 byte output1 = 255;
 byte output2 = 255;
@@ -41,7 +46,7 @@ byte checkSum = 0;
 //Declare a constant for the start byte ensuring that the value is static.
 const byte START = 255;
 
-#define SERIAL_BAUD 9600
+#define SERIAL_BAUD 115200
 
 uint32_t next_tx_time_ms = 0;
 const uint16_t tx_time_interval_ms = 25;
@@ -128,20 +133,21 @@ void loop()
   else
   {
     // serial connection is established, handle communications with GUI
-    handle_serial_comms ();
+    #if DEBUG_OVERRIDE
 
-    int in1 = analogRead ( SENSOR1 );
-    int in2 = analogRead ( SENSOR2 );
+    char buf [128] = { 0 };
 
-    if ( time_ms >= next_tx_time_ms )
-    {
-      next_tx_time_ms = time_ms + tx_time_interval_ms;
-    
-      char buf [255] = { 0 };
-      
-      sprintf ( buf, "1: [ %d ]\t2: [ %d ]\n", in1, in2 );
-      Serial.write ( buf );
-    }
+
+    input1 = analogRead ( SENSOR1 ) / 4;
+    input2 = analogRead ( SENSOR2 ) / 4;
+
+
+    sprintf ( buf, "1: [ %d ]\t2: [ %d ]\n", input1, input2 );
+    Serial.print (buf );
+
+    #else
+      handle_serial_comms ();
+    #endif
   }
 }
 
@@ -238,14 +244,14 @@ void handle_valid_packet ()
   {
     case INPUT1: //In the case of Input 1 the value is read from pin A5 and sent back in the same four byte package format.
     {
-      input1 = digitalRead ( SENSOR1 );
+      input1 = analogRead ( SENSOR1 ) / 4;
       transmit_input_command_response ( input1, commandByte );
     }          
     break;
 
     case INPUT2: //Input 2 is the same as Input 1, but read from pin A4
     {
-      input2 = digitalRead ( SENSOR2 );
+      input2 = analogRead ( SENSOR2 ) / 4;
       transmit_input_command_response ( input2, commandByte );
     }               
     break;

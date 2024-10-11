@@ -50,6 +50,11 @@ namespace LF_ROBOT_GUI
             label1 = new Label();
             textBox_byteOutput = new TextBox();
             button_byteOutput = new Button();
+            textBox_duty_sp = new TextBox();
+            textBox_duty_sp_delta_max = new TextBox();
+            label2 = new Label();
+            label3 = new Label();
+            label4 = new Label();
             statusStrip1.SuspendLayout();
             SuspendLayout();
             // 
@@ -121,7 +126,7 @@ namespace LF_ROBOT_GUI
             textBox_baudSelect.Name = "textBox_baudSelect";
             textBox_baudSelect.Size = new Size(49, 23);
             textBox_baudSelect.TabIndex = 7;
-            textBox_baudSelect.Text = "9600";
+            textBox_baudSelect.Text = "115200";
             // 
             // label_comSelect
             // 
@@ -224,11 +229,65 @@ namespace LF_ROBOT_GUI
             button_byteOutput.UseVisualStyleBackColor = true;
             button_byteOutput.Click += button_byteOutput_Click;
             // 
+            // textBox_duty_sp
+            // 
+            textBox_duty_sp.Location = new Point(439, 68);
+            textBox_duty_sp.Name = "textBox_duty_sp";
+            textBox_duty_sp.Size = new Size(58, 23);
+            textBox_duty_sp.TabIndex = 20;
+            textBox_duty_sp.TextChanged += textBox_duty_sp_TextChanged;
+            // 
+            // textBox_duty_sp_delta_max
+            // 
+            textBox_duty_sp_delta_max.Location = new Point(439, 97);
+            textBox_duty_sp_delta_max.Name = "textBox_duty_sp_delta_max";
+            textBox_duty_sp_delta_max.Size = new Size(58, 23);
+            textBox_duty_sp_delta_max.TabIndex = 21;
+            textBox_duty_sp_delta_max.TextChanged += textBox_duty_sp_delta_max_TextChanged;
+            // 
+            // label2
+            // 
+            label2.AutoSize = true;
+            label2.BackColor = SystemColors.Info;
+            label2.Font = new Font("Segoe UI", 12F);
+            label2.Location = new Point(365, 9);
+            label2.Name = "label2";
+            label2.Size = new Size(117, 21);
+            label2.TabIndex = 22;
+            label2.Text = "Control Params";
+            // 
+            // label3
+            // 
+            label3.AutoSize = true;
+            label3.BackColor = SystemColors.Info;
+            label3.Font = new Font("Segoe UI", 12F);
+            label3.Location = new Point(365, 70);
+            label3.Name = "label3";
+            label3.Size = new Size(64, 21);
+            label3.TabIndex = 23;
+            label3.Text = "duty_sp";
+            // 
+            // label4
+            // 
+            label4.AutoSize = true;
+            label4.BackColor = SystemColors.Info;
+            label4.Font = new Font("Segoe UI", 12F);
+            label4.Location = new Point(292, 97);
+            label4.Name = "label4";
+            label4.Size = new Size(141, 21);
+            label4.TabIndex = 24;
+            label4.Text = "duty_sp_delta_max";
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(927, 466);
+            Controls.Add(label4);
+            Controls.Add(label3);
+            Controls.Add(label2);
+            Controls.Add(textBox_duty_sp_delta_max);
+            Controls.Add(textBox_duty_sp);
             Controls.Add(button_byteOutput);
             Controls.Add(textBox_byteOutput);
             Controls.Add(label1);
@@ -275,5 +334,10 @@ namespace LF_ROBOT_GUI
         private Label label1;
         private TextBox textBox_byteOutput;
         private Button button_byteOutput;
+        private TextBox textBox_duty_sp;
+        private TextBox textBox_duty_sp_delta_max;
+        private Label label2;
+        private Label label3;
+        private Label label4;
     }
 }
