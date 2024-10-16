@@ -55,6 +55,7 @@ namespace LF_ROBOT_GUI
             label2 = new Label();
             label3 = new Label();
             label4 = new Label();
+            button_auto_engage = new Button();
             statusStrip1.SuspendLayout();
             SuspendLayout();
             // 
@@ -278,11 +279,22 @@ namespace LF_ROBOT_GUI
             label4.TabIndex = 24;
             label4.Text = "duty_sp_delta_max";
             // 
+            // button_auto_engage
+            // 
+            button_auto_engage.Location = new Point(377, 36);
+            button_auto_engage.Name = "button_auto_engage";
+            button_auto_engage.Size = new Size(95, 22);
+            button_auto_engage.TabIndex = 25;
+            button_auto_engage.Text = "start auto";
+            button_auto_engage.UseVisualStyleBackColor = true;
+            button_auto_engage.Click += button_auto_engage_Click;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(927, 466);
+            Controls.Add(button_auto_engage);
             Controls.Add(label4);
             Controls.Add(label3);
             Controls.Add(label2);
@@ -339,5 +351,6 @@ namespace LF_ROBOT_GUI
         private Label label2;
         private Label label3;
         private Label label4;
+        private Button button_auto_engage;
     }
 }

@@ -68,8 +68,8 @@ enum SERIAL_DATA_MSG_ID
 uint32_t _last_heartbeat_rx_time_ms = 0;
 
 // MSG transmission rate definitions
-#define TX_RATE_FAST_MS 3
-#define TX_RATE_MEDI_MS 25
+#define TX_RATE_FAST_MS 50
+#define TX_RATE_MEDI_MS 80
 #define TX_RATE_SLOW_MS 100
 
 uint32_t _next_fast_msg_tx_time_ms = 0;
@@ -82,7 +82,7 @@ uint32_t _next_slow_msg_tx_time_ms = 0;
 #define FSM_STATE_DATA_MSG_TX_PERIOD_MS TX_RATE_SLOW_MS
 
 #define PACKET_SIZE_BYTES 4
-char tx_buf [PACKET_SIZE_BYTES] = { 0 };
+byte tx_buf [PACKET_SIZE_BYTES] = { 0 };
 
 //      PINS
 
@@ -174,6 +174,27 @@ void loop()
   // get the current millisecond
   uint32_t time_ms = millis ();
   
+#if DEBUG_OVERRIDE
+
+  poll_sensors ();
+  delay ( 1 );
+
+  byte start = START_DATA;
+  byte id = SENSOR_L;
+  byte data = _sensor_l;
+  byte cs = start + id + data;
+
+
+  // TEXT BASED TX FOR READING OVER SERIAL MONITOR
+  char buf [64] = { 0 };
+  sprintf ( buf, "%d %d\n", _sensor_l, _sensor_r );
+  Serial.write ( buf );
+
+  delay ( 10 );
+
+#else
+
+  /// NORMAL ROBOT OPERATION
   if ( !Serial )
   {
     // ensure the robot stops if no serial connection is established
@@ -214,6 +235,8 @@ void loop()
         break;
     }
   }
+
+  #endif
 }
 
 //#################################################################################################//
@@ -268,8 +291,8 @@ void output_DAC_2( byte data ) //loop through lookup table of Arduino pins conne
 /// @brief Read both left and right sensor pins and crunch 10 bit ADC range into 1 byte for efficient communication
 void poll_sensors ()
 {
-  _sensor_l = analogRead ( PIN_SENSOR_L ) / 4;
-  _sensor_r = analogRead ( PIN_SENSOR_R ) / 4;
+  _sensor_l = (byte)(analogRead ( PIN_SENSOR_L ) / 4);
+  _sensor_r = (byte)(analogRead ( PIN_SENSOR_R ) / 4);
 }
 
 bool check_heartbeat_valid ( const uint32_t &time_ms )
@@ -349,17 +372,20 @@ void transmit_sensor_data ()
   /// @todo might be worth combining both sensor values into 1 byte by crunching into 4 bit range / chanel
 
   // TX L CH
-  create_msg_buf ( START_DATA, SENSOR_L, _sensor_l );
+  create_msg_buf ( (byte)START_DATA, (byte)SENSOR_L, _sensor_l );
   Serial.write ( tx_buf, PACKET_SIZE_BYTES );
 
+  // FIX MAGIC STUFFZ
+  delay ( 1 );
+
   // TX R CH
-  create_msg_buf ( START_DATA, SENSOR_R, _sensor_r );
+  create_msg_buf ( (byte)START_DATA, (byte)SENSOR_R, _sensor_r );
   Serial.write ( tx_buf, PACKET_SIZE_BYTES );
 }
 
 void transmit_fsm_state ()
 {
-  create_msg_buf ( START_DATA, FSM_STATE, __FSM_STATE );
+  create_msg_buf ( (byte)START_DATA, (byte)FSM_STATE, (byte)__FSM_STATE );
   Serial.write ( tx_buf, PACKET_SIZE_BYTES );
 }
 
