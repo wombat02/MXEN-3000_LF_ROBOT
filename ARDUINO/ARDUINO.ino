@@ -179,7 +179,7 @@ void loop()
     // ensure the robot stops if no serial connection is established
     // this will prevent runaway if connection to the GUI is lost
     stop_robot ();
-    __FSM_STATE = FSM_STATES::DISABLE; // ensure that the state reflects the loss of COMS
+    __FSM_STATE = DISABLE; // ensure that the state reflects the loss of COMS
   }
   else
   {
@@ -198,7 +198,7 @@ void loop()
         break;
 
       case IDLE:
-        
+        fsm_loop_idle ( time_ms );
         break;
 
       case AUTO:
@@ -274,7 +274,7 @@ void poll_sensors ()
 
 bool check_heartbeat_valid ( const uint32_t &time_ms )
 {
-  return time_ms - _last_heartbeat_rx_time_ms >= HEARTBEAT_RX_TIMEOUT_MS;
+  return time_ms - _last_heartbeat_rx_time_ms <= HEARTBEAT_RX_TIMEOUT_MS;
 }
 
 //#################################################################################################//
@@ -340,7 +340,7 @@ void handle_cmd_msg_rx ( const uint32_t &time_ms )
 
     case HEARTBEAT:
       _last_heartbeat_rx_time_ms = time_ms;
-      break;
+    break;
   }
 }
 
@@ -397,16 +397,17 @@ void fsm_loop_idle ( const uint32_t &time_ms )
   // poll sensors
   poll_sensors ();
 
-
   // MSG TRANSMISSION
   if ( time_ms >= _next_fast_msg_tx_time_ms )
   {
     transmit_sensor_data ();
+    _next_fast_msg_tx_time_ms = time_ms + TX_RATE_FAST_MS;
   }
 
   if ( time_ms >= _next_slow_msg_tx_time_ms )
   {
     transmit_fsm_state ();
+    _next_slow_msg_tx_time_ms = time_ms + TX_RATE_SLOW_MS;
   }
 }
 

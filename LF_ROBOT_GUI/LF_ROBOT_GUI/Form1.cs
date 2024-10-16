@@ -375,7 +375,7 @@ namespace LF_ROBOT_GUI
 
         private void HandleCommandMessageRX()
         {
-        
+            
         }
 
         private void HandleDataMessageRX()
