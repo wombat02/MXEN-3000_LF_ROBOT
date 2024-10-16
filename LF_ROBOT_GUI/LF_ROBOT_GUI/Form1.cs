@@ -1,7 +1,7 @@
 using RJCP.IO.Ports;
 using System.Numerics;
 using System.Runtime.Serialization;
-
+using System.Timers;
 
 namespace LF_ROBOT_GUI
 {
@@ -21,15 +21,57 @@ namespace LF_ROBOT_GUI
         const int OP_CMP_MIN_2 = 36;
         const int OP_CMP_MAX_2 = 255;
 
+        double sensor_threshold = 64;
+        double sensor_left, sensor_right;
+
+        double MAX_DUTY_CYCLE = 0.65;
+        double TURN_DC_CHANGE = 0.35;
+        double K_P = 1.2;
+        double K_I = 0.02;
+
+        double integral_error_left = 0.0;
+        double integral_error_right = 0.0;
+        double prev_error_left = 0.0;
+        double prev_error_right = 0.0;
+        double dt = 0.0;
+        double curr_dc_left = 0.5;
+        double curr_dc_right = 0.5;
+
+
         // SERIAL COMMUNICATION
 
         // rx / tx buffers
         byte[] Outputs = new byte[4];
-        byte[] Inputs = new byte[4];
+        byte[] Inputs  = new byte[4];
 
-        // data constants 
-        const byte START = 255;
-        const byte ZERO = 0;
+        // MSG TYPES
+        const byte CMD_MSG_START = 0xFF;
+        const byte DATA_MSG_START = 0xFE;
+
+        enum DATA_MSG_ID
+        {
+            SENSOR_L,
+            SENSOR_R,
+            FSM_STATE
+        }
+
+        enum CMD_MSG_ID
+        {
+            STOP,
+            HEARTBEAT,
+            DAC0,
+            DAC1
+        }
+
+        enum ROBOT_FSM_STATES
+        {
+            DISABLE,
+            IDLE,
+            AUTO,
+            MANUAL
+        }
+
+        ROBOT_FSM_STATES robot_fsm_state = ROBOT_FSM_STATES.DISABLE;
 
         private SerialPortStream serial; // nuGet package for .NET >= 5.0
 
@@ -45,6 +87,7 @@ namespace LF_ROBOT_GUI
 
             // begin timer for regular updates 
             timer1.Start();
+            dt = timer1.Interval;
         }
 
         /// <summary>
@@ -57,6 +100,12 @@ namespace LF_ROBOT_GUI
         {
             // display a welcome message on the gui
             statusLabel.Text = DateTime.Now.ToShortDateString() + " Welcome to the LF_GUI. Make a serial connection to arduino board to get started!";
+
+            textBox_duty_sp.Text = MAX_DUTY_CYCLE.ToString();
+            textBox_duty_sp_delta_max.Text = TURN_DC_CHANGE.ToString();
+
+            sensor_left  = -1;
+            sensor_right = -1;
         }
 
         private void Form1_OnClosing(Object sender, FormClosingEventArgs e)
@@ -75,7 +124,18 @@ namespace LF_ROBOT_GUI
             }
         }
 
+        /// <summary>
+        /// TX to both DAC PORTS the 50% duty cycle command to stop the robot.
+        /// </summary>
+        void SendStopCommand()
+        {
+            int opcode_1 = (int)(0.5f * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
+            int opcode_2 = (int)(0.5f * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
 
+            // tuning is also done on cart
+            // consider having both ways to do this and only use stop data on cart for no coms?
+            TransmitCommandMessage(CMD_MSG_ID.STOP, 0);
+        }
 
         /*------------------------------------------------------------------------------------*/
         //                          MAIN CONTROL LOOP
@@ -93,8 +153,18 @@ namespace LF_ROBOT_GUI
             {
                 if (serial.IsOpen)
                 {
-                    // SERIAL PORT IS OPEN
                     //statusLabel.Text = serial.PortName.ToString() + ": CONNECTED";
+
+                    // send heartbeat message
+                    TransmitCommandMessage(CMD_MSG_ID.HEARTBEAT, 0);
+
+                    String msg = String.Format(
+                        "STATE: {0}    L: {1}    R: {2}",
+                        robot_fsm_state.ToString(),
+                        sensor_left,
+                        sensor_right
+                    );
+                    statusLabel.Text = msg;
 
                     if (joystickControl.Enabled)
                     {
@@ -104,44 +174,7 @@ namespace LF_ROBOT_GUI
                     else
                     {
                         /// TODO AUTOMATIC CONTROL / IDLE STATE
-
-                        msgTx (0, 0);
-
-
-                        if (serial.BytesToRead >= 4)
-                        {
-                            byte[] rxBuf = { 0, 0, 0, 0 };
-                            
-                            try
-                            {
-                                // full packet available
-                                int bytes_read = serial.Read(rxBuf, 0, rxBuf.Length);
-                                //statusLabel.Text = bytes_read.ToString();
-                            }
-                            catch (Exception ex)
-                            {
-                                statusLabel.Text = ex.Message;
-                            }
-
-                            if (rxBuf[0] == START)
-                            {
-                                // confirm checksum
-                                int checksum = START + rxBuf[1] + rxBuf[2];
-
-                                if (checksum == rxBuf[3])
-                                {
-                                    // packet is valid
-
-                                    statusLabel.Text = rxBuf[2].ToString();
-                                }
-                                else
-                                {
-                                    statusLabel.Text = "CHECKSUM ERROR: INVALID RX";
-                                }
-
-                                statusLabel.Text = rxBuf[2].ToString();
-                            }
-                        }
+                        //AutomaticControlLoop();
                     }
                 }
                 else
@@ -174,8 +207,8 @@ namespace LF_ROBOT_GUI
 
 
             // send OPCode to DAC outputs
-            msgTx(2, (byte)opcode_1);
-            msgTx(3, (byte)opcode_2);
+            TransmitCommandMessage(CMD_MSG_ID.DAC0, (byte)opcode_1);
+            TransmitCommandMessage(CMD_MSG_ID.DAC1, (byte)opcode_2);
 
             // create message text to display joystick params on the status label
             String msg = String.Format(
@@ -188,6 +221,73 @@ namespace LF_ROBOT_GUI
             statusLabel.Text = msg;
         }
 
+        private void AutomaticControlLoop()
+        {
+            double curr_error_left;
+            double curr_error_right;
+            double goal_duty_left;
+            double goal_duty_right;
+
+
+            if (sensor_left == 1)
+            {
+                if (sensor_right == 1)
+                {
+                    goal_duty_left = MAX_DUTY_CYCLE;
+                    goal_duty_right = MAX_DUTY_CYCLE;
+                }
+                else
+                {
+                    goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
+                    goal_duty_right = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                }
+            }
+            else
+            {
+                if (sensor_right == 1)
+                {
+                    goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                    goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
+                }
+                else
+                {
+                    goal_duty_left = MAX_DUTY_CYCLE;
+                    goal_duty_right = MAX_DUTY_CYCLE;
+                }
+            }
+            double.Clamp(goal_duty_left, 0.0, 1.0);
+            double.Clamp(goal_duty_right, 0.0, 1.0);
+
+            curr_error_left = goal_duty_left - curr_dc_left;
+            curr_error_right = goal_duty_right - curr_dc_right;
+            integral_error_left = dt * (prev_error_left + curr_error_left) / 2.0;
+            integral_error_right = dt * (prev_error_right + curr_error_right) / 2.0;
+
+            curr_dc_left = curr_error_left * K_P + integral_error_left * K_I;
+            curr_dc_right = curr_error_right * K_P + integral_error_left * K_I;
+
+            int opcode_left  = (int)( ( 1.0f - curr_dc_left ) * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
+            int opcode_right = (int)(           curr_dc_right * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
+
+            // send OPCode to DAC outputs
+            //msgTx(2, (byte)opcode_left);
+            //msgTx(3, (byte)opcode_right);
+
+            // create message text to display joystick params on the status label
+            String msg = String.Format(
+                "PORT2: {0}    PORT3: {1}    L: {2}    R: {3}",
+                opcode_left,
+                opcode_right,
+                sensor_left,
+                sensor_right
+            );
+            statusLabel.Text = msg;
+        }
+
+        /*------------------------------------------------------------------------------------*/
+        //                          SERIAL COMMUNICATION
+        /*------------------------------------------------------------------------------------*/
+
         /// <summary>
         /// Opens a SerialPortStream object to communicate with ARDUINO based on 
         /// used input text fields. 
@@ -198,9 +298,9 @@ namespace LF_ROBOT_GUI
             int baud = 9600; // default baud rate
 
             // parse baud rate from text input
-            try 
+            try
             {
-                int.Parse(textBox_baudSelect.Text);
+                baud = int.Parse(textBox_baudSelect.Text);
             }
             catch (Exception e)
             {
@@ -237,36 +337,95 @@ namespace LF_ROBOT_GUI
         private void SerialPortStream_DataReceived(Object sender, SerialDataReceivedEventArgs e)
         {
             // check and calculate checksum to determine data validity
-        }
-
-        // Send a four byte message to the Arduino via serial.
-
-        private void msgTx(byte PORT, byte DATA)
-        {
-            Outputs[0] = START;                         //Set the first byte to the start value that indicates the beginning of the message.
-            Outputs[1] = PORT;                          //Set the second byte to represent the port where, Input 1 = 0, Input 2 = 1, Output 1 = 2 & Output 2 = 3. This could be enumerated to make writing code simpler... (see Arduino driver)
-            Outputs[2] = DATA;                          //Set the third byte to the value to be assigned to the port. This is only necessary for outputs, however it is best to assign a consistent value such as 0 for input ports.
-            Outputs[3] = (byte)(START + PORT + DATA);   //Calculate the checksum byte, the same calculation is performed on the Arduino side to confirm the message was received correctly.
-
-            try
+            if (serial.BytesToRead >= 4)
             {
-                if (serial != null)
+                try
                 {
-                    if (serial.IsOpen)
+                    // full packet available
+                    int bytes_read = serial.Read(Inputs, 0, Inputs.Length);
+                    /*
+                    statusLabel.Text = String.Format(
+                        "{0}  {1}  {2}  {3}",
+                        rxBuf[0], rxBuf[1], rxBuf[2], rxBuf[3]
+                    );
+                    */
+                }
+                catch (Exception ex)
+                {
+                    //statusLabel.Text = ex.Message;
+                }
+
+                // confirm checksum
+                // C# byte arithmetic is promoted to int
+                // simulate overflow by masking with 0xFF
+                byte checksum = (byte)((Inputs[0] + Inputs[1] + Inputs[2]) & 0xFF);
+                if (checksum == Inputs[3])
+                {
+                    if (Inputs[0] == CMD_MSG_START)
                     {
-                        serial.Write(Outputs, 0, 4);         //Send all four bytes to the IO card.                      
+                        HandleCommandMessageRX();
+                    }
+                    else if (Inputs[0] == DATA_MSG_START)
+                    {
+                        HandleDataMessageRX();
                     }
                 }
             }
-            catch (Exception e)
+        }
+
+        private void HandleCommandMessageRX()
+        {
+        
+        }
+
+        private void HandleDataMessageRX()
+        {
+            switch (Inputs[1])
             {
-                // display communication error on the status bar
-                statusLabel.Text = e.Message;
+                case (byte)DATA_MSG_ID.SENSOR_L:
+                    sensor_left = Inputs[2];
+                    break;
+
+                case (byte)DATA_MSG_ID.SENSOR_R:
+                    sensor_right = Inputs[2];
+                    break;
+
+                case (byte)DATA_MSG_ID.FSM_STATE:
+                    robot_fsm_state = (ROBOT_FSM_STATES)Inputs[2];
+                    break;
             }
         }
 
+        private void TransmitCommandMessage ( CMD_MSG_ID msgID, byte data )
+        {
+            Outputs[0] = CMD_MSG_START;
+            Outputs[1] = (byte)msgID;
+            Outputs[2] = data;
+
+            // C# byte arithmetic is promoted to int
+            // simulate overflow by masking with 0xFF
+            Outputs[3] = (byte)((Outputs[0] + Outputs[1] + Outputs[2]) & 0xFF);
+
+            // write constructed buffer
+            serial.Write(Outputs, 0, Outputs.Length);
+        }
+
+        private void TransmitDataMessage ( DATA_MSG_ID msgID, byte data )
+        {
+            Outputs[0] = DATA_MSG_START;
+            Outputs[1] = (byte)msgID;
+            Outputs[2] = data;
+
+            // C# byte arithmetic is promoted to int
+            // simulate overflow by masking with 0xFF
+            Outputs[3] = (byte)((Outputs[0] + Outputs[1] + Outputs[2]) & 0xFF);
+
+            // write constructed buffer
+            serial.Write(Outputs, 0, Outputs.Length);
+        }
+
         /*------------------------------------------------------------------------------------*/
-        //                          SERIAL COMMUNICATION CONTROLS
+        //                          SERIAL COMMUNICATION GUI CONTROLS
         /*------------------------------------------------------------------------------------*/
 
         private void button_sc1_Click(object sender, EventArgs e)
@@ -289,15 +448,19 @@ namespace LF_ROBOT_GUI
                 InitializeSerialPortStream();
 
                 // send stop command
-                if ( serial != null )
+                if (serial != null)
                 {
-                    if (serial.IsOpen )
-                    { 
+                    if (serial.IsOpen)
+                    {
                         SendStopCommand();
                     }
                 }
             }
         }
+
+        /*------------------------------------------------------------------------------------*/
+        //                          OUTPUT OVERRIDE BUTTONS
+        /*------------------------------------------------------------------------------------*/
 
         private void button_setVoltage_Click(object sender, EventArgs e)
         {
@@ -325,8 +488,7 @@ namespace LF_ROBOT_GUI
             statusLabel.Text = "CMP: " + cmp_voltage;
             int opcode = (int)(255.0 * (cmp_voltage / VREF));
 
-            // send OPCode
-            msgTx(2, (byte)opcode);
+            // send OPCodes
         }
 
         private void button_pwm_Click(object sender, EventArgs e)
@@ -353,9 +515,7 @@ namespace LF_ROBOT_GUI
             // convert interpolated compare voltage to an opcode
             int opcode = (int)(255.0 * (cmp_voltage / VREF));
 
-            // send OPCode
-            // TEST use PORT 2 to output on ARDUINO's DAC 1
-            msgTx(2, (byte)opcode);
+            // send OPCodes
         }
 
         private void button_trackpadEnable_Click(object sender, EventArgs e)
@@ -393,23 +553,37 @@ namespace LF_ROBOT_GUI
                 statusLabel.Text = ex.Message;
             }
 
-            // send OPCode
-            // TEST use PORT 2 to output on ARDUINO's DAC 1
-            msgTx(2, (byte)code);
+            // send OPCodes
         }
 
 
 
-        /// <summary>
-        /// TX to both DAC PORTS the 50% duty cycle command to stop the robot.
-        /// </summary>
-        void SendStopCommand ()
-        {
-            int opcode_1 = (int)(0.5f * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
-            int opcode_2 = (int)(0.5f * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
+        
 
-            msgTx(2, (byte) opcode_1);
-            msgTx(3, (byte) opcode_2);
+        private void textBox_duty_sp_TextChanged(object sender, EventArgs e)
+        {
+            // parse pwm %
+            try
+            {
+                MAX_DUTY_CYCLE = double.Parse(textBox_pwmDuty.Text);
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = ex.Message;
+            }
+        }
+
+        private void textBox_duty_sp_delta_max_TextChanged(object sender, EventArgs e)
+        {
+            // parse pwm %
+            try
+            {
+                TURN_DC_CHANGE = double.Parse(textBox_pwmDuty.Text);
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = ex.Message;
+            }
         }
     }
 }

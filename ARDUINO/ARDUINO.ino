@@ -19,6 +19,10 @@
 
 //      GLOBALS
 
+/// @warning enabling this bit will disable regular robot communications!
+/// This will force the robot to only transmit the sensors data in a readible form for calibration
+#define DEBUG_OVERRIDE 0
+
 //Declare variables for storing the port values. 
 byte _output1 = 255;
 byte _output2 = 255;
@@ -37,17 +41,18 @@ byte checkSum = 0;
 
 //      SERIAL CONFIG
 
-#define SERIAL_BAUD 9600
+#define SERIAL_BAUD 115200
 
 // Serial communication Start codes
-const byte START_DATA = 0xFF;
-const byte START_CMD  = 0xFE;
+const byte START_CMD  = 0xFF;
+const byte START_DATA = 0xFE;
 
 enum SERIAL_CMD_MSG_ID
 {
+  STOP,
+  HEARTBEAT,
   DAC0,
-  DAC1,
-  STOP
+  DAC1
 };
 
 enum SERIAL_DATA_MSG_ID
@@ -57,9 +62,27 @@ enum SERIAL_DATA_MSG_ID
   FSM_STATE
 };
 
-uint32_t next_tx_time_ms = 0;
-const uint16_t tx_time_interval_ms = 25;
 
+// robot will enter FSM STATE DISABLE if heartbeat msg is not received within this time period
+#define HEARTBEAT_RX_TIMEOUT_MS 500
+uint32_t _last_heartbeat_rx_time_ms = 0;
+
+// MSG transmission rate definitions
+#define TX_RATE_FAST_MS 3
+#define TX_RATE_MEDI_MS 25
+#define TX_RATE_SLOW_MS 100
+
+uint32_t _next_fast_msg_tx_time_ms = 0;
+uint32_t _next_medi_msg_tx_time_ms = 0;
+uint32_t _next_slow_msg_tx_time_ms = 0;
+
+// MSG type transmission rates
+#define SENSOR_DATA_MSG_TX_PERIOD_MS    TX_RATE_FAST_MS
+#define MTR_CMD_DATA_MSG_TX_PERIOD_MS   TX_RATE_MEDI_MS
+#define FSM_STATE_DATA_MSG_TX_PERIOD_MS TX_RATE_SLOW_MS
+
+#define PACKET_SIZE_BYTES 4
+char tx_buf [PACKET_SIZE_BYTES] = { 0 };
 
 //      PINS
 
@@ -69,9 +92,7 @@ const byte PIN_SENSOR_L = A6;
 const byte PIN_SENSOR_R = A7;
 
 
-
 //      TUNING
-
 
 // define constants to stop the DAC for each output
 const byte DAC1_OP_STOP = 167;
@@ -80,30 +101,48 @@ const byte DAC2_OP_STOP = 145;
 
 
 // FSM 
-
+/**
+ * DISABLE -> robot is stopped and will blink LED to indicate loss of communication
+ * IDLE    -> communication with GUI established, start streaming data to GUI while waiting for CMD
+ * AUTO    -> AUTOMATIC CONTROL use data byte to determine auto mode (fwd, rev etc)
+ * MANUAL  -> respond to joystick cmd messages to manually control the robot for tuning and validation purposes. also :)
+ */
 enum FSM_STATES { DISABLE, IDLE, AUTO, MANUAL };
-FSM_STATES _fsm_state; // instance of FSM enum to keep track of the robot's current state
+FSM_STATES __FSM_STATE; // instance of FSM enum to keep track of the robot's current state
 
-
+#define DISABLE_LED_BLINK_PERIOD_MS 300
 
 
 //#################################################################################################//
 //                                      FUNCTION PRE-DECLARATIONS
 //#################################################################################################//
 
+//    INIT
 void init_DACs ();
 void init_sensors ();
 
+//    ROBOT CONTROLS
 void stop_robot ();
 void output_DAC_1 ( byte data );
 void output_DAC_2 ( byte data );
 
-byte bitFlip ( byte value );
+void poll_sensors ();
+bool check_heartbeat_valid ( const uint32_t &time_ms );
 
-void handle_serial_comms ();
-void handle_valid_packet ();
-void transmit_input_command_response ( int reading, byte CMD );
+//    SERIAL COMMS
+void create_msg_buf ( byte start, byte id, byte data );
+void handle_serial_rx  ( const uint32_t &time_ms );
+void handle_cmd_msg_rx ( const uint32_t &time_ms );
 
+void transmit_sensor_data ();
+void transmit_fsm_state ();
+
+
+//    FSM 
+void fsm_loop_disable ( const uint32_t &time_ms );
+void fsm_loop_idle    ( const uint32_t &time_ms );
+void fsm_loop_manual  ( const uint32_t &time_ms );
+void fsm_loop_auto    ( const uint32_t &time_ms );
 
 //#################################################################################################//
 //                                      PROGRAM ENTRY POINT
@@ -111,11 +150,13 @@ void transmit_input_command_response ( int reading, byte CMD );
 void setup() 
 {
   // ensure the robot is started in the disabled state
-  _fsm_state = FSM_STATES::DISABLE;
+  __FSM_STATE = FSM_STATES::DISABLE;
 
   // setup arduino pins
   init_DACs ();
   init_sensors ();
+
+  pinMode ( LED_BUILTIN, OUTPUT );
 
   // ensure the robot is stopped on power on
   // DACs will go to full throttle immediately
@@ -131,51 +172,53 @@ void setup()
 void loop() 
 {
   // get the current millisecond
-  const uint32_t time_ms = millis ();
-
-  // STOP CAR IF NO COMMUNICATIONS
-  // NOT WORKING WHILE MAKING CONNECTIONS
-  // FIND ANOTHER WAY TO ENSURE THE ROBOT IS STOPPED WHILE INITIALISING SERIAL CONNECTIONS
+  uint32_t time_ms = millis ();
+  
   if ( !Serial )
   {
     // ensure the robot stops if no serial connection is established
     // this will prevent runaway if connection to the GUI is lost
     stop_robot ();
-    _fsm_state = FSM_STATES::DISABLE; // ensure that the state reflects the loss of COMS
+    __FSM_STATE = FSM_STATES::DISABLE; // ensure that the state reflects the loss of COMS
   }
   else
   {
-
     // handle parsing received data over Serial
-    handle_serial_rx ();
+    handle_serial_rx ( time_ms );
 
+    if ( !check_heartbeat_valid ( time_ms ) )
+      __FSM_STATE = DISABLE; // ANY -> DISABLE disable robot under any circumstances if heartbeat is not received within the timeout
+    
 
-    switch ( _fsm_state )
+    // handle FSM control modes
+    switch ( __FSM_STATE )
     {
       case DISABLE:
-        // blink on-board LED
-        // ensure motors are stopped
-      break;
+        fsm_loop_disable ( time_ms );
+        break;
 
       case IDLE:
-        // check timing of last received heartbeat msg time to determine if comms are still operational
-        // handle sending sensor data
-      break;
+        
+        break;
 
       case AUTO:
         // check heartbeat timing for loss of comms
         // send sensor data
         // send state heartbeat
-      break;
+        break;
 
       case MANUAL:
         // check heartbeat timing for loss of comms
         // send sensor data
         // send state heartbeat
-      break;
+        break;
     }
   }
 }
+
+//#################################################################################################//
+//                                      FUNCTION DEFINITIONS
+//#################################################################################################//
 
 /// @brief Initialise PINMODE for ALL DAC PINs
 void init_DACs() 
@@ -208,7 +251,7 @@ void output_DAC_1( byte data ) //loop through lookup table of Arduino pins conne
 {
   for( int i = 0; i<=7; i++ )
   {
-    digitalWrite( DACPIN1[i] , ((data>>i)&1 ? HIGH : LOW));
+    digitalWrite ( DACPIN1[i] , ( (data>>i)&1 ? HIGH : LOW ) );
   }
 }
 
@@ -218,28 +261,35 @@ void output_DAC_2( byte data ) //loop through lookup table of Arduino pins conne
 {
   for( int i = 0; i<=7; i++ )
   {
-    digitalWrite( DACPIN2[i] , ((data>>i)&1 ? HIGH : LOW));
+    digitalWrite( DACPIN2[i] , ( (data>>i)&1 ? HIGH : LOW ) );
   }
 }
 
-//Function to reverse the order of the bits.
-byte bitFlip(byte value)
+/// @brief Read both left and right sensor pins and crunch 10 bit ADC range into 1 byte for efficient communication
+void poll_sensors ()
 {
-  byte bFlip = 0;
-  byte j=7;
-  for (byte i=0; i<8; i++) { 
-    bitWrite(bFlip, i, bitRead(value, j));
-    j--;
-  }
-  return bFlip;
+  _sensor_l = analogRead ( PIN_SENSOR_L ) / 4;
+  _sensor_r = analogRead ( PIN_SENSOR_R ) / 4;
+}
+
+bool check_heartbeat_valid ( const uint32_t &time_ms )
+{
+  return time_ms - _last_heartbeat_rx_time_ms >= HEARTBEAT_RX_TIMEOUT_MS;
 }
 
 //#################################################################################################//
 //                                      SERIAL COMMUNICATION
 //#################################################################################################//
 
+void create_msg_buf ( byte start, byte id, byte data )
+{
+  tx_buf [0] = start;
+  tx_buf [1] = id;
+  tx_buf [2] = data;
+  tx_buf [3] = start + id + data;  
+}
 
-void handle_serial_rx ()
+void handle_serial_rx ( const uint32_t &time_ms )
 {
   if (Serial.available() >= 4) // Check that a full package of four bytes has arrived in the buffer.
   {
@@ -255,27 +305,22 @@ void handle_serial_rx ()
       // Calculate the check sum, this is also calculated in visual studio and is sent as he final byte of the package.
       checkSum = _start_byte + _id_byte + _data_byte; 
     
-      if ( checkSum == _check_byte )
+      if ( checkSum == _check_byte ) // ensure packet is valid before continuing to process
       {
         if ( _start_byte == START_CMD )
         {
-          // HANDLE CMD MSG
-          handle_cmd_msg_rx ();
+          handle_cmd_msg_rx ( time_ms );
         }
-        else 
+        else if ( _start_byte == START_DATA ) 
         {
-          // HANDLE DATA MSG
-
-          // IS THIS ACTUALLY NEEDED HERE? 
-
-          // WHAT DATA WOULD BE SENT TO THE NANO FROM THE GUI?
+          // HANDLE DATA MSG RX
         }
       }
     }
   }
 }
 
-void handle_cmd_msg_rx ()
+void handle_cmd_msg_rx ( const uint32_t &time_ms )
 {
   switch ( _id_byte )
   {
@@ -292,34 +337,85 @@ void handle_cmd_msg_rx ()
     case STOP:
       stop_robot ();
     break;
+
+    case HEARTBEAT:
+      _last_heartbeat_rx_time_ms = time_ms;
+      break;
   }
 }
 
-/// @brief Send a packet back to the GUI containing a sensor reading
-/// @param reading ADC sensor reading to transmit ( 1 byte )
-/// @param CMD Command byte to echo back ( see SERIAL_PORT_ID )
-void transmit_input_command_response ( int reading, byte CMD )
-{
-  const int checkSum = START + _id_byte + reading; //Calculate the check sum.
-
-  Serial.write(START);       //Send the start byte indicating the start of a package.
-  Serial.write(CMD);         //Echo the command byte to inform Visual Studio which port value is being sent.
-  Serial.write(reading);     //Send the value read.
-  Serial.write(checkSum);    //Send the check sum.
-}
-
-
 void transmit_sensor_data ()
 {
-  
+  /// @todo might be worth combining both sensor values into 1 byte by crunching into 4 bit range / chanel
+
+  // TX L CH
+  create_msg_buf ( START_DATA, SENSOR_L, _sensor_l );
+  Serial.write ( tx_buf, PACKET_SIZE_BYTES );
+
+  // TX R CH
+  create_msg_buf ( START_DATA, SENSOR_R, _sensor_r );
+  Serial.write ( tx_buf, PACKET_SIZE_BYTES );
+}
+
+void transmit_fsm_state ()
+{
+  create_msg_buf ( START_DATA, FSM_STATE, __FSM_STATE );
+  Serial.write ( tx_buf, PACKET_SIZE_BYTES );
 }
 
 
-void poll_sensors ()
-{
-  int sensor_l_raw = analogRead ( PIN_SENSOR_L );
-  int sensor_r_raw = analogRead ( PIN_SENSOR_R );
 
-  // crunch 10bit adc values into 1 byte
+
+//#################################################################################################//
+//                                      FSM LOOP METHODS
+//#################################################################################################//
+
+
+void fsm_loop_disable ( const uint32_t &time_ms )
+{
+  static uint32_t next_led_blink_time_ms;
+
+  // blink on-board LED
+  if ( time_ms >= next_led_blink_time_ms )
+  {
+    next_led_blink_time_ms = time_ms + DISABLE_LED_BLINK_PERIOD_MS;
+    digitalWrite ( LED_BUILTIN, !digitalRead ( LED_BUILTIN ) );
+  }
+
+  // ensure motors are stopped so robot doesn't move when not instructed
+  stop_robot ();
+
+  if ( check_heartbeat_valid ( time_ms ) )
+    __FSM_STATE = IDLE; // DISABLE -> IDLE State transition on receiving valid heartbeat msg
+}
+
+void fsm_loop_idle ( const uint32_t &time_ms )
+{
+  // ensure onboard led is disabled to indicate robot is in idle state
+  digitalWrite ( LED_BUILTIN, 0 );
+
+  // poll sensors
+  poll_sensors ();
+
+
+  // MSG TRANSMISSION
+  if ( time_ms >= _next_fast_msg_tx_time_ms )
+  {
+    transmit_sensor_data ();
+  }
+
+  if ( time_ms >= _next_slow_msg_tx_time_ms )
+  {
+    transmit_fsm_state ();
+  }
+}
+
+void fsm_loop_manual ( const uint32_t &time_ms )
+{
+
+}
+
+void fsm_loop_auto ( const uint32_t &time_ms )
+{
 
 }
