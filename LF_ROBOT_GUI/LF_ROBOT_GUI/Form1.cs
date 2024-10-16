@@ -37,13 +37,12 @@ namespace LF_ROBOT_GUI
         double MAX_DUTY_CYCLE = 0.65;
         double TURN_DC_CHANGE = 0.15;
 
-        double K_P = 0.02;
-        double K_I = 0.1;
+        // New approximate constants based on dt = 10 milliseconds
+        double K_P = 0.05;
+        double K_I = 0.01;
 
-        double integral_error_left = 0.0;
-        double integral_error_right = 0.0;
-        double prev_error_left = 0.0;
-        double prev_error_right = 0.0;
+        double error_sum_left = 0.0;
+        double error_sum_right = 0.0;
         double dt = 0.0;    // Time since last update of the DC in the PI control loop
         double curr_dc_left = 0.5; // Current DC for left motor
         double curr_dc_right = 0.5; // Current DC for right motor
@@ -322,7 +321,7 @@ namespace LF_ROBOT_GUI
 
         private void AutomaticControlLoop()
         {
-
+            // Duty cycle just below the value required to overcome load voltage and begin movement
             const double robot_overshoot_stop_duty = 0.6;
 
             double curr_error_left;
@@ -508,32 +507,31 @@ namespace LF_ROBOT_GUI
                     break;
             }
 
-
             //goal_duty_left  = double.Clamp(goal_duty_left,  0.0, 1.0);
             //goal_duty_right = double.Clamp(goal_duty_right, 0.0, 1.0);
 
+            // Calculate error at current step
             curr_error_left = goal_duty_left - curr_dc_left;
             curr_error_right = goal_duty_right - curr_dc_right;
-            integral_error_left = dt / 1000 * (prev_error_left + curr_error_left) / 2.0;
-            integral_error_right = dt / 1000 * (prev_error_right + curr_error_right) / 2.0;
 
-            prev_error_left = curr_error_left;
-            prev_error_right = curr_error_right;
+            // Add current error multiplied by time since last step to error sum - integral part of control
+            error_sum_left += curr_error_left * dt/1000;
+            error_sum_right += curr_error_right * dt/1000;
 
-            // FIXED THIS - WASN'T INCREMENTING IT BEFORE, WAS JUST SETTING THE curr_dc VALUES
-            curr_dc_left += curr_error_left * K_P + integral_error_left * K_I;
-            curr_dc_right += curr_error_right * K_P + integral_error_right * K_I;
+            // PI control: use error sum instead of integral error
+            curr_dc_left += curr_error_left * K_P + error_sum_left * K_I;
+            curr_dc_right += curr_error_right * K_P + error_sum_right * K_I;
 
             // Clamp the duty cycles to [0.0, 1.0] just in case
             curr_dc_left = double.Clamp(curr_dc_left, 0.0, 1.0);
             curr_dc_right = double.Clamp(curr_dc_right, 0.0, 1.0);
 
-
+            // Convert desired duty cycle to binary code for DACs
             int opcode_left = (int)(curr_dc_left * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
             int opcode_right = (int)((1.0f - curr_dc_right) * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
 
-            // SEND MOTOR COMMANDS
 
+            // SEND MOTOR COMMANDS
             TransmitCommandMessage(CMD_MSG_ID.DAC0, (byte)opcode_left);
             TransmitCommandMessage(CMD_MSG_ID.DAC1, (byte)opcode_right);
 
@@ -838,10 +836,8 @@ namespace LF_ROBOT_GUI
                 button_auto_engage.Text = "START AUTO";
 
                 /// RESET ALL PI CONTROL VARS
-                integral_error_left = 0.0;
-                integral_error_right = 0.0;
-                prev_error_left = 0.0;
-                prev_error_right = 0.0;
+                error_sum_left = 0.0;
+                error_sum_right = 0.0;
                 dt = 0.0;    // Time since last update of the DC in the PI control loop
                 curr_dc_left = 0.5; // Current DC for left motor
                 curr_dc_right = 0.5; // Current DC for right motor
