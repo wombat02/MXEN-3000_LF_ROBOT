@@ -57,8 +57,7 @@ enum SERIAL_CMD_MSG_ID
 
 enum SERIAL_DATA_MSG_ID
 {
-  SENSOR_L,
-  SENSOR_R,
+  SENSORS,
   FSM_STATE
 };
 
@@ -68,8 +67,8 @@ enum SERIAL_DATA_MSG_ID
 uint32_t _last_heartbeat_rx_time_ms = 0;
 
 // MSG transmission rate definitions
-#define TX_RATE_FAST_MS 50
-#define TX_RATE_MEDI_MS 80
+#define TX_RATE_FAST_MS 20
+#define TX_RATE_MEDI_MS 50
 #define TX_RATE_SLOW_MS 100
 
 uint32_t _next_fast_msg_tx_time_ms = 0;
@@ -179,15 +178,11 @@ void loop()
   poll_sensors ();
   delay ( 1 );
 
-  byte start = START_DATA;
-  byte id = SENSOR_L;
-  byte data = _sensor_l;
-  byte cs = start + id + data;
-
 
   // TEXT BASED TX FOR READING OVER SERIAL MONITOR
   char buf [64] = { 0 };
-  sprintf ( buf, "%d %d\n", _sensor_l, _sensor_r );
+  byte data = _sensor_l / 16 + _sensor_r / 16;
+  sprintf ( buf, "%d\t%d\t%x\n", _sensor_l / 16, _sensor_r / 16, data );
   Serial.write ( buf );
 
   delay ( 10 );
@@ -371,16 +366,12 @@ void transmit_sensor_data ()
 {
   /// @todo might be worth combining both sensor values into 1 byte by crunching into 4 bit range / chanel
 
-  // TX L CH
-  create_msg_buf ( (byte)START_DATA, (byte)SENSOR_L, _sensor_l );
-  Serial.write ( tx_buf, PACKET_SIZE_BYTES );
-
-  // FIX MAGIC STUFFZ
-  delay ( 1 );
-
-  // TX R CH
-  create_msg_buf ( (byte)START_DATA, (byte)SENSOR_R, _sensor_r );
-  Serial.write ( tx_buf, PACKET_SIZE_BYTES );
+  // create byte using <sensor1><sensor2> where each sensor occupies 4 bits
+  // each sensor value is 1 byte ( 0 - 255 ) -> crunch into 0 - 16 with / 16
+  // stich together byte with L occupying bits 0-3 and R occupying bits 4-7
+  byte data = (byte)( ( (_sensor_l / 16) << 4 ) | (_sensor_r / 16) );
+  create_msg_buf ( START_DATA, SENSORS, data );
+  Serial.write   ( tx_buf, PACKET_SIZE_BYTES );
 }
 
 void transmit_fsm_state ()

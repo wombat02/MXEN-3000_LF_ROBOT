@@ -60,6 +60,14 @@ namespace LF_ROBOT_GUI
             textBox_kp = new TextBox();
             label6 = new Label();
             textBox_ki = new TextBox();
+            timer2 = new System.Windows.Forms.Timer(components);
+            rx_buf_indicator = new ProgressBar();
+            panel_off_left = new Panel();
+            panel_left_sensor = new Panel();
+            panel_mid = new Panel();
+            panel_off_right = new Panel();
+            panel_right_sensor = new Panel();
+            label7 = new Label();
             statusStrip1.SuspendLayout();
             SuspendLayout();
             // 
@@ -172,7 +180,7 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_pwmDuty
             // 
-            textBox_pwmDuty.Location = new Point(150, 330);
+            textBox_pwmDuty.Location = new Point(127, 330);
             textBox_pwmDuty.Name = "textBox_pwmDuty";
             textBox_pwmDuty.Size = new Size(45, 23);
             textBox_pwmDuty.TabIndex = 13;
@@ -180,7 +188,7 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_voltage
             // 
-            textBox_voltage.Location = new Point(150, 369);
+            textBox_voltage.Location = new Point(127, 369);
             textBox_voltage.Name = "textBox_voltage";
             textBox_voltage.Size = new Size(45, 23);
             textBox_voltage.TabIndex = 14;
@@ -219,7 +227,7 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_byteOutput
             // 
-            textBox_byteOutput.Location = new Point(150, 407);
+            textBox_byteOutput.Location = new Point(127, 407);
             textBox_byteOutput.Name = "textBox_byteOutput";
             textBox_byteOutput.Size = new Size(45, 23);
             textBox_byteOutput.TabIndex = 18;
@@ -236,7 +244,7 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_duty_sp
             // 
-            textBox_duty_sp.Location = new Point(439, 68);
+            textBox_duty_sp.Location = new Point(355, 83);
             textBox_duty_sp.Name = "textBox_duty_sp";
             textBox_duty_sp.Size = new Size(58, 23);
             textBox_duty_sp.TabIndex = 20;
@@ -244,7 +252,7 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_duty_sp_delta_max
             // 
-            textBox_duty_sp_delta_max.Location = new Point(439, 97);
+            textBox_duty_sp_delta_max.Location = new Point(355, 112);
             textBox_duty_sp_delta_max.Name = "textBox_duty_sp_delta_max";
             textBox_duty_sp_delta_max.Size = new Size(58, 23);
             textBox_duty_sp_delta_max.TabIndex = 21;
@@ -266,7 +274,7 @@ namespace LF_ROBOT_GUI
             label3.AutoSize = true;
             label3.BackColor = SystemColors.Info;
             label3.Font = new Font("Segoe UI", 12F);
-            label3.Location = new Point(365, 70);
+            label3.Location = new Point(281, 85);
             label3.Name = "label3";
             label3.Size = new Size(64, 21);
             label3.TabIndex = 23;
@@ -277,7 +285,7 @@ namespace LF_ROBOT_GUI
             label4.AutoSize = true;
             label4.BackColor = SystemColors.Info;
             label4.Font = new Font("Segoe UI", 12F);
-            label4.Location = new Point(328, 97);
+            label4.Location = new Point(244, 112);
             label4.Name = "label4";
             label4.Size = new Size(105, 21);
             label4.TabIndex = 24;
@@ -298,7 +306,7 @@ namespace LF_ROBOT_GUI
             label5.AutoSize = true;
             label5.BackColor = SystemColors.Info;
             label5.Font = new Font("Segoe UI", 12F);
-            label5.Location = new Point(401, 144);
+            label5.Location = new Point(424, 83);
             label5.Name = "label5";
             label5.Size = new Size(28, 21);
             label5.TabIndex = 27;
@@ -306,7 +314,7 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_kp
             // 
-            textBox_kp.Location = new Point(439, 144);
+            textBox_kp.Location = new Point(462, 83);
             textBox_kp.Name = "textBox_kp";
             textBox_kp.Size = new Size(58, 23);
             textBox_kp.TabIndex = 26;
@@ -317,7 +325,7 @@ namespace LF_ROBOT_GUI
             label6.AutoSize = true;
             label6.BackColor = SystemColors.Info;
             label6.Font = new Font("Segoe UI", 12F);
-            label6.Location = new Point(401, 176);
+            label6.Location = new Point(424, 115);
             label6.Name = "label6";
             label6.Size = new Size(23, 21);
             label6.TabIndex = 29;
@@ -325,17 +333,84 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_ki
             // 
-            textBox_ki.Location = new Point(439, 176);
+            textBox_ki.Location = new Point(462, 115);
             textBox_ki.Name = "textBox_ki";
             textBox_ki.Size = new Size(58, 23);
             textBox_ki.TabIndex = 28;
             textBox_ki.TextChanged += textBox_ki_TextChanged;
+            // 
+            // timer2
+            // 
+            timer2.Interval = 250;
+            timer2.Tick += timer2_Tick;
+            // 
+            // rx_buf_indicator
+            // 
+            rx_buf_indicator.ForeColor = SystemColors.MenuText;
+            rx_buf_indicator.Location = new Point(12, 112);
+            rx_buf_indicator.Name = "rx_buf_indicator";
+            rx_buf_indicator.RightToLeft = RightToLeft.No;
+            rx_buf_indicator.Size = new Size(100, 23);
+            rx_buf_indicator.TabIndex = 30;
+            // 
+            // panel_off_left
+            // 
+            panel_off_left.Location = new Point(285, 174);
+            panel_off_left.Name = "panel_off_left";
+            panel_off_left.Size = new Size(26, 60);
+            panel_off_left.TabIndex = 31;
+            // 
+            // panel_left_sensor
+            // 
+            panel_left_sensor.Location = new Point(342, 174);
+            panel_left_sensor.Name = "panel_left_sensor";
+            panel_left_sensor.Size = new Size(26, 60);
+            panel_left_sensor.TabIndex = 32;
+            // 
+            // panel_mid
+            // 
+            panel_mid.Location = new Point(377, 174);
+            panel_mid.Name = "panel_mid";
+            panel_mid.Size = new Size(26, 60);
+            panel_mid.TabIndex = 33;
+            // 
+            // panel_off_right
+            // 
+            panel_off_right.Location = new Point(462, 174);
+            panel_off_right.Name = "panel_off_right";
+            panel_off_right.Size = new Size(26, 60);
+            panel_off_right.TabIndex = 35;
+            // 
+            // panel_right_sensor
+            // 
+            panel_right_sensor.Location = new Point(414, 174);
+            panel_right_sensor.Name = "panel_right_sensor";
+            panel_right_sensor.Size = new Size(26, 60);
+            panel_right_sensor.TabIndex = 34;
+            // 
+            // label7
+            // 
+            label7.AutoSize = true;
+            label7.BackColor = SystemColors.Info;
+            label7.Font = new Font("Segoe UI", 12F);
+            label7.Location = new Point(342, 150);
+            label7.Name = "label7";
+            label7.Size = new Size(98, 21);
+            label7.TabIndex = 36;
+            label7.Text = "Line Position";
             // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(927, 466);
+            Controls.Add(label7);
+            Controls.Add(panel_off_right);
+            Controls.Add(panel_right_sensor);
+            Controls.Add(panel_mid);
+            Controls.Add(panel_left_sensor);
+            Controls.Add(panel_off_left);
+            Controls.Add(rx_buf_indicator);
             Controls.Add(label6);
             Controls.Add(textBox_ki);
             Controls.Add(label5);
@@ -402,5 +477,13 @@ namespace LF_ROBOT_GUI
         private TextBox textBox_kp;
         private Label label6;
         private TextBox textBox_ki;
+        private System.Windows.Forms.Timer timer2;
+        private ProgressBar rx_buf_indicator;
+        private Panel panel_off_left;
+        private Panel panel_left_sensor;
+        private Panel panel_mid;
+        private Panel panel_off_right;
+        private Panel panel_right_sensor;
+        private Label label7;
     }
 }
