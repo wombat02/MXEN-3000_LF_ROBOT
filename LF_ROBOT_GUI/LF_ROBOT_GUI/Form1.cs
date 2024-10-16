@@ -35,9 +35,9 @@ namespace LF_ROBOT_GUI
         double sensor_left_raw, sensor_right_raw;
 
         double MAX_DUTY_CYCLE = 0.65;
-        double TURN_DC_CHANGE = 0.35;
+        double TURN_DC_CHANGE = 0.15;
 
-        double K_P = 0.005;
+        double K_P = 0.02;
         double K_I = 0.1;
 
         double integral_error_left = 0.0;
@@ -132,8 +132,8 @@ namespace LF_ROBOT_GUI
             textBox_duty_sp.Text = MAX_DUTY_CYCLE.ToString();
             textBox_duty_sp_delta_max.Text = TURN_DC_CHANGE.ToString();
 
-            sensor_left_raw = -1;
-            sensor_right_raw = -1;
+            textBox_kp.Text = K_P.ToString ();
+            textBox_ki.Text = K_I.ToString();
 
             prev_sensor_state = SensorState.NEITHER_ON_LINE;
             curr_sensor_state = SensorState.NEITHER_ON_LINE;
@@ -244,7 +244,7 @@ namespace LF_ROBOT_GUI
                     );
                     statusLabel.Text = msg;
 
-                    if ( auto_mode_en )
+                    if (auto_mode_en)
                     {
                         /// TODO AUTOMATIC CONTROL / IDLE STATE
                         AutomaticControlLoop();
@@ -253,7 +253,7 @@ namespace LF_ROBOT_GUI
                     }
                     else
                     {
-                        if ( joystickControl.Enabled )
+                        if (joystickControl.Enabled)
                         {
                             // send joystick commands to the robot for manual control
                             ManualControlLoop();
@@ -294,7 +294,7 @@ namespace LF_ROBOT_GUI
             float ch_1 = joyPos.Y / 2.0f + 0.5f;
             float ch_2 = joyPos.Y / 2.0f + 0.5f;
 
-            int opcode_1 = (int)(ch_1 * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
+            int opcode_1 = (int)((1.0 - ch_1) * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
             int opcode_2 = (int)(ch_2 * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
 
             // convert interpolated compare voltage to an opcode
@@ -322,13 +322,16 @@ namespace LF_ROBOT_GUI
 
         private void AutomaticControlLoop()
         {
+
+            const double robot_overshoot_stop_duty = 0.6;
+
             double curr_error_left;
             double curr_error_right;
 
             SensorState this_sensor_state = SensorState.NEITHER_ON_LINE;
 
             // apply thresholding to sensor values to treat readings as either 0 ON LINE OR 1 OFF LINE
-            int sensor_left  = (sensor_left_raw  <= sensor_threshold ? 0 : 1);
+            int sensor_left = (sensor_left_raw <= sensor_threshold ? 0 : 1);
             int sensor_right = (sensor_right_raw <= sensor_threshold ? 0 : 1);
 
             // Determine sensor state in this iteration of the control loop
@@ -370,47 +373,34 @@ namespace LF_ROBOT_GUI
                 time_in_curr_state = 0.0;
             }
 
-
-
-
-            // CURRENTLY NOT USING THE TIME SPENT IN THE CURR AND PREV STATE
-            /* 
-            Determine goal duty cycles based on current and 
-            previous sensor states, and current duty cycles 
-            */
-
-            //switch ( curr_sensor_state )
+            //switch (curr_sensor_state)
             //{
+            //    // Robot either over the line (go straight) or off the line
             //    case SensorState.NEITHER_ON_LINE:
-
-            //        // DRIVE FOWRARD
-            //        goal_duty_left  = MAX_DUTY_CYCLE;
+            //        goal_duty_left = MAX_DUTY_CYCLE;
             //        goal_duty_right = MAX_DUTY_CYCLE;
-
             //        break;
 
+            //    // Right sensor on the line
             //    case SensorState.RIGHT_ON_LINE:
-
-            //        goal_duty_left  = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-            //        goal_duty_right = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
-
+            //        // Turn right
+            //        goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
+            //        goal_duty_right = MAX_DUTY_CYCLE;
             //        break;
 
+            //    // Left sensor on the line
             //    case SensorState.LEFT_ON_LINE:
-
-            //        goal_duty_left  = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+            //        // Turn left
+            //        goal_duty_left = MAX_DUTY_CYCLE;
             //        goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-
             //        break;
 
+            //    // Both sensors on the line - need to determine which way currently turning
             //    case SensorState.BOTH_ON_LINE:
-
-            //        goal_duty_left = 0.5;
-            //        goal_duty_right = 0.5;
-
+            //        goal_duty_left = MAX_DUTY_CYCLE;
+            //        goal_duty_right = MAX_DUTY_CYCLE;
             //        break;
             //}
-
             switch (curr_sensor_state)
             {
                 // Robot either over the line (go straight) or off the line
@@ -422,15 +412,15 @@ namespace LF_ROBOT_GUI
                     {
                         // ACCOUNT FOR SHARP CORNERS - MIGHT NEED TO CHANGE THIS
                         // If difference in duty cycle between left and right motors is greater
-                        // than the value added/subtract from maximum duty cycle when tuning, this
+                        // than 0.8 times the value added/subtract from maximum duty cycle when tuning, this
                         // means that the robot is trying to take a sharp corner, so want to keep doing this
-                        if ((curr_dc_left - curr_dc_right) > TURN_DC_CHANGE)
+                        if ((curr_dc_left - curr_dc_right) > 0.8*TURN_DC_CHANGE)
                         {
                             // Turn to right sharply
                             goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
                             goal_duty_right = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
                         }
-                        else if ((curr_dc_right - curr_dc_left) > TURN_DC_CHANGE)
+                        else if ((curr_dc_right - curr_dc_left) > 0.8*TURN_DC_CHANGE)
                         {
                             // Turn to left sharply
                             goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
@@ -448,30 +438,30 @@ namespace LF_ROBOT_GUI
                     else if (curr_dc_left > curr_dc_right && prev_sensor_state == SensorState.LEFT_ON_LINE)
                     {
                         // Stop robot
-                        curr_dc_left = 0.5;
-                        curr_dc_right = 0.5;
+                        curr_dc_left = robot_overshoot_stop_duty;
+                        curr_dc_right = robot_overshoot_stop_duty;
 
                         // Turn to left
-                        goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                        goal_duty_left = MAX_DUTY_CYCLE;
                         goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
                     }
                     // Robot went off line to the left and is turning left
                     else if (curr_dc_right > curr_dc_left && prev_sensor_state == SensorState.RIGHT_ON_LINE)
                     {
                         // Stop robot
-                        curr_dc_left = 0.5;
-                        curr_dc_right = 0.5;
+                        curr_dc_left = robot_overshoot_stop_duty;
+                        curr_dc_right = robot_overshoot_stop_duty;
 
                         // Turn to right sharpl
                         goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-                        goal_duty_right = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                        goal_duty_right = MAX_DUTY_CYCLE;
                     }
                     // Unknown state
                     else
                     {
                         // Stop robot
-                        curr_dc_left = 0.5;
-                        curr_dc_right = 0.5;
+                        curr_dc_left = robot_overshoot_stop_duty;
+                        curr_dc_right = robot_overshoot_stop_duty;
 
                         // Spin on the spot slowly - hopefully find line again
                         goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
@@ -483,13 +473,13 @@ namespace LF_ROBOT_GUI
                 case SensorState.RIGHT_ON_LINE:
                     // Turn right
                     goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-                    goal_duty_right = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                    goal_duty_right = MAX_DUTY_CYCLE;
                     break;
 
                 // Left sensor on the line
                 case SensorState.LEFT_ON_LINE:
                     // Turn left
-                    goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                    goal_duty_left = MAX_DUTY_CYCLE;
                     goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
                     break;
 
@@ -500,13 +490,13 @@ namespace LF_ROBOT_GUI
                     {
                         // Turn right
                         goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-                        goal_duty_right = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                        goal_duty_right = MAX_DUTY_CYCLE;
                     }
                     // Robot was previously turning right
                     else if (prev_sensor_state == SensorState.RIGHT_ON_LINE)
                     {
                         // Turn left
-                        goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
+                        goal_duty_left = MAX_DUTY_CYCLE;
                         goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
                     }
                     // Unlikely state, but handled anyway
@@ -517,7 +507,6 @@ namespace LF_ROBOT_GUI
                     }
                     break;
             }
-
 
 
             //goal_duty_left  = double.Clamp(goal_duty_left,  0.0, 1.0);
@@ -536,7 +525,7 @@ namespace LF_ROBOT_GUI
             curr_dc_right += curr_error_right * K_P + integral_error_right * K_I;
 
             // Clamp the duty cycles to [0.0, 1.0] just in case
-            curr_dc_left  = double.Clamp(curr_dc_left,  0.0, 1.0);
+            curr_dc_left = double.Clamp(curr_dc_left, 0.0, 1.0);
             curr_dc_right = double.Clamp(curr_dc_right, 0.0, 1.0);
 
 
@@ -839,14 +828,51 @@ namespace LF_ROBOT_GUI
         {
             // toggle state
             auto_mode_en = !auto_mode_en;
-        
-            if ( auto_mode_en )
+
+            if (auto_mode_en)
             {
                 button_auto_engage.Text = "STOP AUTO";
             }
             else
             {
                 button_auto_engage.Text = "START AUTO";
+
+                /// RESET ALL PI CONTROL VARS
+                integral_error_left = 0.0;
+                integral_error_right = 0.0;
+                prev_error_left = 0.0;
+                prev_error_right = 0.0;
+                dt = 0.0;    // Time since last update of the DC in the PI control loop
+                curr_dc_left = 0.5; // Current DC for left motor
+                curr_dc_right = 0.5; // Current DC for right motor
+
+
+                goal_duty_left = 0.0;
+                goal_duty_right = 0.0;
+            }
+        }
+
+        private void textBox_kp_TextChanged(object sender, EventArgs e)
+        {
+            try
+            {
+                K_P = double.Parse(textBox_kp.Text);
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = ex.Message;
+            }
+        }
+
+        private void textBox_ki_TextChanged(object sender, EventArgs e)
+        {
+            try
+            {
+                K_I = double.Parse(textBox_ki.Text);
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = ex.Message;
             }
         }
     }

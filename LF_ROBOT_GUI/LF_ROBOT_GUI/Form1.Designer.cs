@@ -56,6 +56,10 @@ namespace LF_ROBOT_GUI
             label3 = new Label();
             label4 = new Label();
             button_auto_engage = new Button();
+            label5 = new Label();
+            textBox_kp = new TextBox();
+            label6 = new Label();
+            textBox_ki = new TextBox();
             statusStrip1.SuspendLayout();
             SuspendLayout();
             // 
@@ -273,11 +277,11 @@ namespace LF_ROBOT_GUI
             label4.AutoSize = true;
             label4.BackColor = SystemColors.Info;
             label4.Font = new Font("Segoe UI", 12F);
-            label4.Location = new Point(292, 97);
+            label4.Location = new Point(328, 97);
             label4.Name = "label4";
-            label4.Size = new Size(141, 21);
+            label4.Size = new Size(105, 21);
             label4.TabIndex = 24;
-            label4.Text = "duty_sp_delta_max";
+            label4.Text = "duty_sp_delta";
             // 
             // button_auto_engage
             // 
@@ -289,11 +293,53 @@ namespace LF_ROBOT_GUI
             button_auto_engage.UseVisualStyleBackColor = true;
             button_auto_engage.Click += button_auto_engage_Click;
             // 
+            // label5
+            // 
+            label5.AutoSize = true;
+            label5.BackColor = SystemColors.Info;
+            label5.Font = new Font("Segoe UI", 12F);
+            label5.Location = new Point(401, 144);
+            label5.Name = "label5";
+            label5.Size = new Size(28, 21);
+            label5.TabIndex = 27;
+            label5.Text = "KP";
+            // 
+            // textBox_kp
+            // 
+            textBox_kp.Location = new Point(439, 144);
+            textBox_kp.Name = "textBox_kp";
+            textBox_kp.Size = new Size(58, 23);
+            textBox_kp.TabIndex = 26;
+            textBox_kp.TextChanged += textBox_kp_TextChanged;
+            // 
+            // label6
+            // 
+            label6.AutoSize = true;
+            label6.BackColor = SystemColors.Info;
+            label6.Font = new Font("Segoe UI", 12F);
+            label6.Location = new Point(401, 176);
+            label6.Name = "label6";
+            label6.Size = new Size(23, 21);
+            label6.TabIndex = 29;
+            label6.Text = "KI";
+            // 
+            // textBox_ki
+            // 
+            textBox_ki.Location = new Point(439, 176);
+            textBox_ki.Name = "textBox_ki";
+            textBox_ki.Size = new Size(58, 23);
+            textBox_ki.TabIndex = 28;
+            textBox_ki.TextChanged += textBox_ki_TextChanged;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(927, 466);
+            Controls.Add(label6);
+            Controls.Add(textBox_ki);
+            Controls.Add(label5);
+            Controls.Add(textBox_kp);
             Controls.Add(button_auto_engage);
             Controls.Add(label4);
             Controls.Add(label3);
@@ -352,5 +398,9 @@ namespace LF_ROBOT_GUI
         private Label label3;
         private Label label4;
         private Button button_auto_engage;
+        private Label label5;
+        private TextBox textBox_kp;
+        private Label label6;
+        private TextBox textBox_ki;
     }
 }
