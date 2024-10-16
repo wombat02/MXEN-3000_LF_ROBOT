@@ -57,11 +57,36 @@ namespace LF_ROBOT_GUI
 
         // rx / tx buffers
         byte[] Outputs = new byte[4];
-        byte[] Inputs = new byte[4];
+        byte[] Inputs  = new byte[4];
 
-        // data constants 
-        const byte START = 0xFF;
-        const byte ZERO = 0;
+        // MSG TYPES
+        const byte CMD_MSG_START = 0xFF;
+        const byte DATA_MSG_START = 0xFE;
+
+        enum DATA_MSG_ID
+        {
+            SENSOR_L,
+            SENSOR_R,
+            FSM_STATE
+        }
+
+        enum CMD_MSG_ID
+        {
+            STOP,
+            HEARTBEAT,
+            DAC0,
+            DAC1
+        }
+
+        enum ROBOT_FSM_STATES
+        {
+            DISABLE,
+            IDLE,
+            AUTO,
+            MANUAL
+        }
+
+        ROBOT_FSM_STATES robot_fsm_state = ROBOT_FSM_STATES.DISABLE;
 
         private SerialPortStream serial; // nuGet package for .NET >= 5.0
 
@@ -122,7 +147,18 @@ namespace LF_ROBOT_GUI
             }
         }
 
+        /// <summary>
+        /// TX to both DAC PORTS the 50% duty cycle command to stop the robot.
+        /// </summary>
+        void SendStopCommand()
+        {
+            int opcode_1 = (int)(0.5f * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
+            int opcode_2 = (int)(0.5f * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
 
+            // tuning is also done on cart
+            // consider having both ways to do this and only use stop data on cart for no coms?
+            TransmitCommandMessage(CMD_MSG_ID.STOP, 0);
+        }
 
         /*------------------------------------------------------------------------------------*/
         //                          MAIN CONTROL LOOP
@@ -145,69 +181,18 @@ namespace LF_ROBOT_GUI
             {
                 if (serial.IsOpen)
                 {
-                    // SERIAL PORT IS OPEN
                     //statusLabel.Text = serial.PortName.ToString() + ": CONNECTED";
-                    /// HANDLE RX
-                    if (serial.BytesToRead >= 4)
-                    {
-                        byte[] rxBuf = { 0, 0, 0, 0 };
 
-                        try
-                        {
-                            // full packet available
-                            int bytes_read = serial.Read(rxBuf, 0, rxBuf.Length);
-                            /*
-                            statusLabel.Text = String.Format(
-                                "{0}  {1}  {2}  {3}",
-                                rxBuf[0], rxBuf[1], rxBuf[2], rxBuf[3]
-                            );
-                            */
-                        }
-                        catch (Exception ex)
-                        {
-                            //statusLabel.Text = ex.Message;
-                        }
+                    // send heartbeat message
+                    TransmitCommandMessage(CMD_MSG_ID.HEARTBEAT, 0);
 
-                        if (rxBuf[0] == START)
-                        {
-                            // confirm checksum
-                            // C# byte arithmetic is promoted to int
-                            // simulate overflow by masking with 0xFF
-                            byte checksum = (byte)((START + rxBuf[1] + rxBuf[2]) & 0xFF);
-
-                            if (checksum == rxBuf[3])
-                            {
-                                // packet is valid
-
-
-                                // HANDLE READING SENSOR VALUES
-                                switch (rxBuf[1])
-                                {
-                                    case 0:
-                                        // sensor 1
-
-                                        // value is between 0 and 255
-
-                                        // implement thresholding control through GUI
-                                        sensor_left = rxBuf[2];
-                                        //sensor_left = sensor_left > sensor_threshold ? 1 : 0;
-
-                                        break;
-
-                                    case 1:
-
-                                        sensor_right = rxBuf[2];
-                                        //sensor_left = sensor_left > sensor_threshold ? 1 : 0;
-
-                                        break;
-                                }
-                            }
-                            else
-                            {
-                                //statusLabel.Text = "CHECKSUM ERROR: INVALID RX";
-                            }
-                        }
-                    }
+                    String msg = String.Format(
+                        "STATE: {0}    L: {1}    R: {2}",
+                        robot_fsm_state.ToString(),
+                        sensor_left,
+                        sensor_right
+                    );
+                    statusLabel.Text = msg;
 
                     if (joystickControl.Enabled)
                     {
@@ -218,12 +203,8 @@ namespace LF_ROBOT_GUI
                     }
                     else
                     {
-                        // poll sensors
-                        msgTx(0, 0);
-                        msgTx(1, 0);
-
                         /// TODO AUTOMATIC CONTROL / IDLE STATE
-                        AutomaticControlLoop();
+                        //AutomaticControlLoop();
                     }
                 }
                 else
@@ -256,8 +237,8 @@ namespace LF_ROBOT_GUI
 
 
             // send OPCode to DAC outputs
-            msgTx(2, (byte)opcode_1);
-            msgTx(3, (byte)opcode_2);
+            TransmitCommandMessage(CMD_MSG_ID.DAC0, (byte)opcode_1);
+            TransmitCommandMessage(CMD_MSG_ID.DAC1, (byte)opcode_2);
 
             // create message text to display joystick params on the status label
             String msg = String.Format(
@@ -463,6 +444,10 @@ namespace LF_ROBOT_GUI
             statusLabel.Text = msg;
         }
 
+        /*------------------------------------------------------------------------------------*/
+        //                          SERIAL COMMUNICATION
+        /*------------------------------------------------------------------------------------*/
+
         /// <summary>
         /// Opens a SerialPortStream object to communicate with ARDUINO based on 
         /// used input text fields. 
@@ -512,39 +497,95 @@ namespace LF_ROBOT_GUI
         private void SerialPortStream_DataReceived(Object sender, SerialDataReceivedEventArgs e)
         {
             // check and calculate checksum to determine data validity
-            
-            
-            
-        }
-
-        // Send a four byte message to the Arduino via serial.
-
-        private void msgTx(byte PORT, byte DATA)
-        {
-            Outputs[0] = START;                         //Set the first byte to the start value that indicates the beginning of the message.
-            Outputs[1] = PORT;                          //Set the second byte to represent the port where, Input 1 = 0, Input 2 = 1, Output 1 = 2 & Output 2 = 3. This could be enumerated to make writing code simpler... (see Arduino driver)
-            Outputs[2] = DATA;                          //Set the third byte to the value to be assigned to the port. This is only necessary for outputs, however it is best to assign a consistent value such as 0 for input ports.
-            Outputs[3] = (byte)(START + PORT + DATA);   //Calculate the checksum byte, the same calculation is performed on the Arduino side to confirm the message was received correctly.
-
-            try
+            if (serial.BytesToRead >= 4)
             {
-                if (serial != null)
+                try
                 {
-                    if (serial.IsOpen)
+                    // full packet available
+                    int bytes_read = serial.Read(Inputs, 0, Inputs.Length);
+                    /*
+                    statusLabel.Text = String.Format(
+                        "{0}  {1}  {2}  {3}",
+                        rxBuf[0], rxBuf[1], rxBuf[2], rxBuf[3]
+                    );
+                    */
+                }
+                catch (Exception ex)
+                {
+                    //statusLabel.Text = ex.Message;
+                }
+
+                // confirm checksum
+                // C# byte arithmetic is promoted to int
+                // simulate overflow by masking with 0xFF
+                byte checksum = (byte)((Inputs[0] + Inputs[1] + Inputs[2]) & 0xFF);
+                if (checksum == Inputs[3])
+                {
+                    if (Inputs[0] == CMD_MSG_START)
                     {
-                        serial.Write(Outputs, 0, 4);         //Send all four bytes to the IO card.                      
+                        HandleCommandMessageRX();
+                    }
+                    else if (Inputs[0] == DATA_MSG_START)
+                    {
+                        HandleDataMessageRX();
                     }
                 }
             }
-            catch (Exception e)
+        }
+
+        private void HandleCommandMessageRX()
+        {
+        
+        }
+
+        private void HandleDataMessageRX()
+        {
+            switch (Inputs[1])
             {
-                // display communication error on the status bar
-                statusLabel.Text = e.Message;
+                case (byte)DATA_MSG_ID.SENSOR_L:
+                    sensor_left = Inputs[2];
+                    break;
+
+                case (byte)DATA_MSG_ID.SENSOR_R:
+                    sensor_right = Inputs[2];
+                    break;
+
+                case (byte)DATA_MSG_ID.FSM_STATE:
+                    robot_fsm_state = (ROBOT_FSM_STATES)Inputs[2];
+                    break;
             }
         }
 
+        private void TransmitCommandMessage ( CMD_MSG_ID msgID, byte data )
+        {
+            Outputs[0] = CMD_MSG_START;
+            Outputs[1] = (byte)msgID;
+            Outputs[2] = data;
+
+            // C# byte arithmetic is promoted to int
+            // simulate overflow by masking with 0xFF
+            Outputs[3] = (byte)((Outputs[0] + Outputs[1] + Outputs[2]) & 0xFF);
+
+            // write constructed buffer
+            serial.Write(Outputs, 0, Outputs.Length);
+        }
+
+        private void TransmitDataMessage ( DATA_MSG_ID msgID, byte data )
+        {
+            Outputs[0] = DATA_MSG_START;
+            Outputs[1] = (byte)msgID;
+            Outputs[2] = data;
+
+            // C# byte arithmetic is promoted to int
+            // simulate overflow by masking with 0xFF
+            Outputs[3] = (byte)((Outputs[0] + Outputs[1] + Outputs[2]) & 0xFF);
+
+            // write constructed buffer
+            serial.Write(Outputs, 0, Outputs.Length);
+        }
+
         /*------------------------------------------------------------------------------------*/
-        //                          SERIAL COMMUNICATION CONTROLS
+        //                          SERIAL COMMUNICATION GUI CONTROLS
         /*------------------------------------------------------------------------------------*/
 
         private void button_sc1_Click(object sender, EventArgs e)
@@ -577,6 +618,10 @@ namespace LF_ROBOT_GUI
             }
         }
 
+        /*------------------------------------------------------------------------------------*/
+        //                          OUTPUT OVERRIDE BUTTONS
+        /*------------------------------------------------------------------------------------*/
+
         private void button_setVoltage_Click(object sender, EventArgs e)
         {
             // parse voltage request
@@ -603,8 +648,7 @@ namespace LF_ROBOT_GUI
             statusLabel.Text = "CMP: " + cmp_voltage;
             int opcode = (int)(255.0 * (cmp_voltage / VREF));
 
-            // send OPCode
-            msgTx(2, (byte)opcode);
+            // send OPCodes
         }
 
         private void button_pwm_Click(object sender, EventArgs e)
@@ -631,9 +675,7 @@ namespace LF_ROBOT_GUI
             // convert interpolated compare voltage to an opcode
             int opcode = (int)(255.0 * (cmp_voltage / VREF));
 
-            // send OPCode
-            // TEST use PORT 2 to output on ARDUINO's DAC 1
-            msgTx(2, (byte)opcode);
+            // send OPCodes
         }
 
         private void button_trackpadEnable_Click(object sender, EventArgs e)
@@ -671,24 +713,12 @@ namespace LF_ROBOT_GUI
                 statusLabel.Text = ex.Message;
             }
 
-            // send OPCode
-            // TEST use PORT 2 to output on ARDUINO's DAC 1
-            msgTx(2, (byte)code);
+            // send OPCodes
         }
 
 
 
-        /// <summary>
-        /// TX to both DAC PORTS the 50% duty cycle command to stop the robot.
-        /// </summary>
-        void SendStopCommand()
-        {
-            int opcode_1 = (int)(0.5f * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
-            int opcode_2 = (int)(0.5f * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
-
-            msgTx(2, (byte)opcode_1);
-            msgTx(3, (byte)opcode_2);
-        }
+        
 
         private void textBox_duty_sp_TextChanged(object sender, EventArgs e)
         {
