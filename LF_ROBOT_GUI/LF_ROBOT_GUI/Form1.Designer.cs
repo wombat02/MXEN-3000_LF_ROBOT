@@ -51,7 +51,7 @@ namespace LF_ROBOT_GUI
             textBox_byteOutput = new TextBox();
             button_byteOutput = new Button();
             textBox_duty_sp = new TextBox();
-            textBox_duty_sp_delta_max = new TextBox();
+            textBox_small_duty_sp_delta = new TextBox();
             label2 = new Label();
             label3 = new Label();
             label4 = new Label();
@@ -68,6 +68,23 @@ namespace LF_ROBOT_GUI
             panel_off_right = new Panel();
             panel_right_sensor = new Panel();
             label7 = new Label();
+            textBox_sensor_r = new TextBox();
+            textBox_sensor_l = new TextBox();
+            textBox_sensor_thresh = new TextBox();
+            label8 = new Label();
+            label9 = new Label();
+            label10 = new Label();
+            label11 = new Label();
+            textBox_large_duty_sp_delta = new TextBox();
+            panel_fsm_disconnected = new Panel();
+            label12 = new Label();
+            label13 = new Label();
+            label14 = new Label();
+            panel_fsm_idle = new Panel();
+            label15 = new Label();
+            panel_fsm_automatic = new Panel();
+            label16 = new Label();
+            panel_fsm_manual = new Panel();
             statusStrip1.SuspendLayout();
             SuspendLayout();
             // 
@@ -76,9 +93,9 @@ namespace LF_ROBOT_GUI
             joystickControl.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
             joystickControl.BackColor = Color.Gray;
             joystickControl.Enabled = false;
-            joystickControl.Location = new Point(615, 141);
+            joystickControl.Location = new Point(796, 194);
             joystickControl.Name = "joystickControl";
-            joystickControl.Size = new Size(300, 300);
+            joystickControl.Size = new Size(500, 500);
             joystickControl.TabIndex = 1;
             // 
             // timer1
@@ -92,7 +109,7 @@ namespace LF_ROBOT_GUI
             serialComsLabel.AutoSize = true;
             serialComsLabel.BackColor = SystemColors.Info;
             serialComsLabel.Font = new Font("Segoe UI", 12F);
-            serialComsLabel.Location = new Point(12, 9);
+            serialComsLabel.Location = new Point(47, 37);
             serialComsLabel.Name = "serialComsLabel";
             serialComsLabel.Size = new Size(132, 21);
             serialComsLabel.TabIndex = 2;
@@ -101,7 +118,7 @@ namespace LF_ROBOT_GUI
             // button_sc2
             // 
             button_sc2.AutoSize = true;
-            button_sc2.Location = new Point(67, 84);
+            button_sc2.Location = new Point(125, 113);
             button_sc2.Name = "button_sc2";
             button_sc2.Size = new Size(54, 19);
             button_sc2.TabIndex = 3;
@@ -111,7 +128,7 @@ namespace LF_ROBOT_GUI
             // 
             // button_sc1
             // 
-            button_sc1.Location = new Point(12, 84);
+            button_sc1.Location = new Point(47, 112);
             button_sc1.Name = "button_sc1";
             button_sc1.Size = new Size(49, 22);
             button_sc1.TabIndex = 4;
@@ -122,9 +139,9 @@ namespace LF_ROBOT_GUI
             // statusStrip1
             // 
             statusStrip1.Items.AddRange(new ToolStripItem[] { statusLabel });
-            statusStrip1.Location = new Point(0, 444);
+            statusStrip1.Location = new Point(0, 703);
             statusStrip1.Name = "statusStrip1";
-            statusStrip1.Size = new Size(927, 22);
+            statusStrip1.Size = new Size(1308, 22);
             statusStrip1.TabIndex = 6;
             statusStrip1.Text = "statusStrip1";
             // 
@@ -135,7 +152,7 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_baudSelect
             // 
-            textBox_baudSelect.Location = new Point(95, 56);
+            textBox_baudSelect.Location = new Point(130, 84);
             textBox_baudSelect.Name = "textBox_baudSelect";
             textBox_baudSelect.Size = new Size(49, 23);
             textBox_baudSelect.TabIndex = 7;
@@ -144,25 +161,26 @@ namespace LF_ROBOT_GUI
             // label_comSelect
             // 
             label_comSelect.AutoSize = true;
-            label_comSelect.Font = new Font("Segoe UI", 9F);
-            label_comSelect.Location = new Point(12, 35);
+            label_comSelect.Font = new Font("Yet R", 12F);
+            label_comSelect.Location = new Point(47, 63);
             label_comSelect.Name = "label_comSelect";
-            label_comSelect.Size = new Size(35, 15);
+            label_comSelect.Size = new Size(47, 17);
             label_comSelect.TabIndex = 8;
             label_comSelect.Text = "PORT";
             // 
             // label_baudSelect
             // 
             label_baudSelect.AutoSize = true;
-            label_baudSelect.Location = new Point(12, 59);
+            label_baudSelect.Font = new Font("Yet R", 12F);
+            label_baudSelect.Location = new Point(47, 87);
             label_baudSelect.Name = "label_baudSelect";
-            label_baudSelect.Size = new Size(38, 15);
+            label_baudSelect.Size = new Size(47, 17);
             label_baudSelect.TabIndex = 10;
             label_baudSelect.Text = "BAUD";
             // 
             // textBox_portSelect
             // 
-            textBox_portSelect.Location = new Point(95, 35);
+            textBox_portSelect.Location = new Point(130, 63);
             textBox_portSelect.Name = "textBox_portSelect";
             textBox_portSelect.Size = new Size(49, 23);
             textBox_portSelect.TabIndex = 9;
@@ -170,9 +188,9 @@ namespace LF_ROBOT_GUI
             // 
             // button_trackpadEnable
             // 
-            button_trackpadEnable.Location = new Point(719, 92);
+            button_trackpadEnable.Location = new Point(1069, 83);
             button_trackpadEnable.Name = "button_trackpadEnable";
-            button_trackpadEnable.Size = new Size(92, 23);
+            button_trackpadEnable.Size = new Size(120, 80);
             button_trackpadEnable.TabIndex = 12;
             button_trackpadEnable.Text = "Enable";
             button_trackpadEnable.UseVisualStyleBackColor = true;
@@ -180,25 +198,25 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_pwmDuty
             // 
-            textBox_pwmDuty.Location = new Point(127, 330);
+            textBox_pwmDuty.Location = new Point(938, 73);
             textBox_pwmDuty.Name = "textBox_pwmDuty";
-            textBox_pwmDuty.Size = new Size(45, 23);
+            textBox_pwmDuty.Size = new Size(50, 23);
             textBox_pwmDuty.TabIndex = 13;
             textBox_pwmDuty.Text = "0.0";
             // 
             // textBox_voltage
             // 
-            textBox_voltage.Location = new Point(127, 369);
+            textBox_voltage.Location = new Point(938, 112);
             textBox_voltage.Name = "textBox_voltage";
-            textBox_voltage.Size = new Size(45, 23);
+            textBox_voltage.Size = new Size(50, 23);
             textBox_voltage.TabIndex = 14;
             textBox_voltage.Text = "0.0";
             // 
             // button_pwm
             // 
-            button_pwm.Location = new Point(12, 330);
+            button_pwm.Location = new Point(832, 68);
             button_pwm.Name = "button_pwm";
-            button_pwm.Size = new Size(109, 23);
+            button_pwm.Size = new Size(100, 30);
             button_pwm.TabIndex = 15;
             button_pwm.Text = "PWM %";
             button_pwm.UseVisualStyleBackColor = true;
@@ -206,9 +224,9 @@ namespace LF_ROBOT_GUI
             // 
             // button_setVoltage
             // 
-            button_setVoltage.Location = new Point(12, 369);
+            button_setVoltage.Location = new Point(832, 107);
             button_setVoltage.Name = "button_setVoltage";
-            button_setVoltage.Size = new Size(109, 23);
+            button_setVoltage.Size = new Size(100, 30);
             button_setVoltage.TabIndex = 16;
             button_setVoltage.Text = "Voltage";
             button_setVoltage.UseVisualStyleBackColor = true;
@@ -218,25 +236,25 @@ namespace LF_ROBOT_GUI
             // 
             label1.AutoSize = true;
             label1.BackColor = SystemColors.Info;
-            label1.Font = new Font("Segoe UI", 12F);
-            label1.Location = new Point(12, 290);
+            label1.Font = new Font("Segoe UI", 14F);
+            label1.Location = new Point(832, 28);
             label1.Name = "label1";
-            label1.Size = new Size(122, 21);
+            label1.Size = new Size(147, 25);
             label1.TabIndex = 17;
             label1.Text = "Output Controls";
             // 
             // textBox_byteOutput
             // 
-            textBox_byteOutput.Location = new Point(127, 407);
+            textBox_byteOutput.Location = new Point(938, 150);
             textBox_byteOutput.Name = "textBox_byteOutput";
-            textBox_byteOutput.Size = new Size(45, 23);
+            textBox_byteOutput.Size = new Size(50, 23);
             textBox_byteOutput.TabIndex = 18;
             // 
             // button_byteOutput
             // 
-            button_byteOutput.Location = new Point(12, 407);
+            button_byteOutput.Location = new Point(832, 145);
             button_byteOutput.Name = "button_byteOutput";
-            button_byteOutput.Size = new Size(109, 23);
+            button_byteOutput.Size = new Size(100, 30);
             button_byteOutput.TabIndex = 19;
             button_byteOutput.Text = "Byte";
             button_byteOutput.UseVisualStyleBackColor = true;
@@ -244,26 +262,34 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_duty_sp
             // 
-            textBox_duty_sp.Location = new Point(355, 83);
+            textBox_duty_sp.Location = new Point(148, 602);
             textBox_duty_sp.Name = "textBox_duty_sp";
             textBox_duty_sp.Size = new Size(58, 23);
             textBox_duty_sp.TabIndex = 20;
             textBox_duty_sp.TextChanged += textBox_duty_sp_TextChanged;
             // 
-            // textBox_duty_sp_delta_max
+            // textBox_small_duty_sp_delta
             // 
-            textBox_duty_sp_delta_max.Location = new Point(355, 112);
-            textBox_duty_sp_delta_max.Name = "textBox_duty_sp_delta_max";
-            textBox_duty_sp_delta_max.Size = new Size(58, 23);
-            textBox_duty_sp_delta_max.TabIndex = 21;
-            textBox_duty_sp_delta_max.TextChanged += textBox_duty_sp_delta_max_TextChanged;
+            textBox_small_duty_sp_delta.Location = new Point(148, 631);
+            textBox_small_duty_sp_delta.Name = "textBox_small_duty_sp_delta";
+            textBox_small_duty_sp_delta.Size = new Size(58, 23);
+            textBox_small_duty_sp_delta.TabIndex = 21;
+            textBox_small_duty_sp_delta.TextChanged += textBox_small_duty_sp_delta_TextChanged;
+            // 
+            // textBox_large_duty_sp_delta
+            // 
+            textBox_large_duty_sp_delta.Location = new Point(148, 664);
+            textBox_large_duty_sp_delta.Name = "textBox_large_duty_sp_delta";
+            textBox_large_duty_sp_delta.Size = new Size(58, 23);
+            textBox_large_duty_sp_delta.TabIndex = 44;
+            textBox_large_duty_sp_delta.TextChanged += textBox_large_duty_sp_delta_TextChanged;
             // 
             // label2
             // 
             label2.AutoSize = true;
             label2.BackColor = SystemColors.Info;
             label2.Font = new Font("Segoe UI", 12F);
-            label2.Location = new Point(365, 9);
+            label2.Location = new Point(13, 565);
             label2.Name = "label2";
             label2.Size = new Size(117, 21);
             label2.TabIndex = 22;
@@ -274,28 +300,28 @@ namespace LF_ROBOT_GUI
             label3.AutoSize = true;
             label3.BackColor = SystemColors.Info;
             label3.Font = new Font("Segoe UI", 12F);
-            label3.Location = new Point(281, 85);
+            label3.Location = new Point(13, 600);
             label3.Name = "label3";
-            label3.Size = new Size(64, 21);
+            label3.Size = new Size(129, 21);
             label3.TabIndex = 23;
-            label3.Text = "duty_sp";
+            label3.Text = "TARGET DUTY SP";
             // 
             // label4
             // 
             label4.AutoSize = true;
             label4.BackColor = SystemColors.Info;
             label4.Font = new Font("Segoe UI", 12F);
-            label4.Location = new Point(244, 112);
+            label4.Location = new Point(13, 632);
             label4.Name = "label4";
-            label4.Size = new Size(105, 21);
+            label4.Size = new Size(95, 21);
             label4.TabIndex = 24;
-            label4.Text = "duty_sp_delta";
+            label4.Text = "SMALL SP Δ";
             // 
             // button_auto_engage
             // 
-            button_auto_engage.Location = new Point(377, 36);
+            button_auto_engage.Location = new Point(505, 604);
             button_auto_engage.Name = "button_auto_engage";
-            button_auto_engage.Size = new Size(95, 22);
+            button_auto_engage.Size = new Size(120, 80);
             button_auto_engage.TabIndex = 25;
             button_auto_engage.Text = "start auto";
             button_auto_engage.UseVisualStyleBackColor = true;
@@ -306,7 +332,7 @@ namespace LF_ROBOT_GUI
             label5.AutoSize = true;
             label5.BackColor = SystemColors.Info;
             label5.Font = new Font("Segoe UI", 12F);
-            label5.Location = new Point(424, 83);
+            label5.Location = new Point(217, 602);
             label5.Name = "label5";
             label5.Size = new Size(28, 21);
             label5.TabIndex = 27;
@@ -314,7 +340,7 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_kp
             // 
-            textBox_kp.Location = new Point(462, 83);
+            textBox_kp.Location = new Point(255, 602);
             textBox_kp.Name = "textBox_kp";
             textBox_kp.Size = new Size(58, 23);
             textBox_kp.TabIndex = 26;
@@ -325,7 +351,7 @@ namespace LF_ROBOT_GUI
             label6.AutoSize = true;
             label6.BackColor = SystemColors.Info;
             label6.Font = new Font("Segoe UI", 12F);
-            label6.Location = new Point(424, 115);
+            label6.Location = new Point(217, 634);
             label6.Name = "label6";
             label6.Size = new Size(23, 21);
             label6.TabIndex = 29;
@@ -333,7 +359,7 @@ namespace LF_ROBOT_GUI
             // 
             // textBox_ki
             // 
-            textBox_ki.Location = new Point(462, 115);
+            textBox_ki.Location = new Point(255, 634);
             textBox_ki.Name = "textBox_ki";
             textBox_ki.Size = new Size(58, 23);
             textBox_ki.TabIndex = 28;
@@ -347,45 +373,50 @@ namespace LF_ROBOT_GUI
             // rx_buf_indicator
             // 
             rx_buf_indicator.ForeColor = SystemColors.MenuText;
-            rx_buf_indicator.Location = new Point(12, 112);
+            rx_buf_indicator.Location = new Point(47, 140);
             rx_buf_indicator.Name = "rx_buf_indicator";
             rx_buf_indicator.RightToLeft = RightToLeft.No;
-            rx_buf_indicator.Size = new Size(100, 23);
+            rx_buf_indicator.Size = new Size(132, 23);
             rx_buf_indicator.TabIndex = 30;
             // 
             // panel_off_left
             // 
-            panel_off_left.Location = new Point(285, 174);
+            panel_off_left.BorderStyle = BorderStyle.Fixed3D;
+            panel_off_left.Location = new Point(330, 71);
             panel_off_left.Name = "panel_off_left";
-            panel_off_left.Size = new Size(26, 60);
+            panel_off_left.Size = new Size(60, 90);
             panel_off_left.TabIndex = 31;
             // 
             // panel_left_sensor
             // 
-            panel_left_sensor.Location = new Point(342, 174);
+            panel_left_sensor.BorderStyle = BorderStyle.Fixed3D;
+            panel_left_sensor.Location = new Point(422, 71);
             panel_left_sensor.Name = "panel_left_sensor";
-            panel_left_sensor.Size = new Size(26, 60);
+            panel_left_sensor.Size = new Size(30, 90);
             panel_left_sensor.TabIndex = 32;
             // 
             // panel_mid
             // 
-            panel_mid.Location = new Point(377, 174);
+            panel_mid.BorderStyle = BorderStyle.Fixed3D;
+            panel_mid.Location = new Point(458, 86);
             panel_mid.Name = "panel_mid";
-            panel_mid.Size = new Size(26, 60);
+            panel_mid.Size = new Size(50, 60);
             panel_mid.TabIndex = 33;
             // 
             // panel_off_right
             // 
-            panel_off_right.Location = new Point(462, 174);
+            panel_off_right.BorderStyle = BorderStyle.Fixed3D;
+            panel_off_right.Location = new Point(575, 71);
             panel_off_right.Name = "panel_off_right";
-            panel_off_right.Size = new Size(26, 60);
+            panel_off_right.Size = new Size(50, 90);
             panel_off_right.TabIndex = 35;
             // 
             // panel_right_sensor
             // 
-            panel_right_sensor.Location = new Point(414, 174);
+            panel_right_sensor.BorderStyle = BorderStyle.Fixed3D;
+            panel_right_sensor.Location = new Point(514, 71);
             panel_right_sensor.Name = "panel_right_sensor";
-            panel_right_sensor.Size = new Size(26, 60);
+            panel_right_sensor.Size = new Size(30, 90);
             panel_right_sensor.TabIndex = 34;
             // 
             // label7
@@ -393,17 +424,184 @@ namespace LF_ROBOT_GUI
             label7.AutoSize = true;
             label7.BackColor = SystemColors.Info;
             label7.Font = new Font("Segoe UI", 12F);
-            label7.Location = new Point(342, 150);
+            label7.Location = new Point(433, 37);
             label7.Name = "label7";
             label7.Size = new Size(98, 21);
             label7.TabIndex = 36;
             label7.Text = "Line Position";
             // 
+            // textBox_sensor_r
+            // 
+            textBox_sensor_r.Location = new Point(514, 180);
+            textBox_sensor_r.Name = "textBox_sensor_r";
+            textBox_sensor_r.Size = new Size(40, 23);
+            textBox_sensor_r.TabIndex = 38;
+            // 
+            // textBox_sensor_l
+            // 
+            textBox_sensor_l.Location = new Point(412, 180);
+            textBox_sensor_l.Name = "textBox_sensor_l";
+            textBox_sensor_l.Size = new Size(40, 23);
+            textBox_sensor_l.TabIndex = 39;
+            // 
+            // textBox_sensor_thresh
+            // 
+            textBox_sensor_thresh.Location = new Point(464, 180);
+            textBox_sensor_thresh.Name = "textBox_sensor_thresh";
+            textBox_sensor_thresh.Size = new Size(40, 23);
+            textBox_sensor_thresh.TabIndex = 40;
+            textBox_sensor_thresh.TextChanged += textBox_sensor_thresh_TextChanged;
+            // 
+            // label8
+            // 
+            label8.AutoSize = true;
+            label8.BackColor = SystemColors.Info;
+            label8.Font = new Font("Segoe UI", 12F);
+            label8.Location = new Point(412, 215);
+            label8.Name = "label8";
+            label8.Size = new Size(145, 21);
+            label8.TabIndex = 41;
+            label8.Text = "L         THRESH      R";
+            // 
+            // label9
+            // 
+            label9.AutoSize = true;
+            label9.BackColor = SystemColors.Info;
+            label9.Font = new Font("Segoe UI", 16F);
+            label9.Location = new Point(1024, 28);
+            label9.Name = "label9";
+            label9.Size = new Size(206, 30);
+            label9.TabIndex = 42;
+            label9.Text = "MANUAL OVERRIDE";
+            // 
+            // label10
+            // 
+            label10.AutoSize = true;
+            label10.BackColor = SystemColors.Info;
+            label10.Font = new Font("Segoe UI", 14F);
+            label10.Location = new Point(468, 561);
+            label10.Name = "label10";
+            label10.Size = new Size(203, 25);
+            label10.TabIndex = 43;
+            label10.Text = "AUTOMATIC CONTROL";
+            // 
+            // label11
+            // 
+            label11.AutoSize = true;
+            label11.BackColor = SystemColors.Info;
+            label11.Font = new Font("Segoe UI", 12F);
+            label11.Location = new Point(13, 665);
+            label11.Name = "label11";
+            label11.Size = new Size(93, 21);
+            label11.TabIndex = 45;
+            label11.Text = "LARGE SP Δ";
+            
+            // 
+            // panel_fsm_disconnected
+            // 
+            panel_fsm_disconnected.BorderStyle = BorderStyle.Fixed3D;
+            panel_fsm_disconnected.Location = new Point(46, 230);
+            panel_fsm_disconnected.Name = "panel_fsm_disconnected";
+            panel_fsm_disconnected.Size = new Size(30, 20);
+            panel_fsm_disconnected.TabIndex = 46;
+            // 
+            // label12
+            // 
+            label12.AutoSize = true;
+            label12.BackColor = SystemColors.Info;
+            label12.Font = new Font("Segoe UI", 12F);
+            label12.Location = new Point(39, 194);
+            label12.Name = "label12";
+            label12.Size = new Size(105, 21);
+            label12.TabIndex = 47;
+            label12.Text = "ROBOT STATE";
+            // 
+            // label13
+            // 
+            label13.AutoSize = true;
+            label13.Font = new Font("Yet R", 12F, FontStyle.Regular, GraphicsUnit.Point, 129);
+            label13.Location = new Point(82, 230);
+            label13.Name = "label13";
+            label13.Size = new Size(120, 17);
+            label13.TabIndex = 48;
+            label13.Text = "DISCONNECTED";
+            // 
+            // label14
+            // 
+            label14.AutoSize = true;
+            label14.Font = new Font("Yet R", 12F, FontStyle.Regular, GraphicsUnit.Point, 129);
+            label14.Location = new Point(82, 269);
+            label14.Name = "label14";
+            label14.Size = new Size(39, 17);
+            label14.TabIndex = 50;
+            label14.Text = "IDLE";
+            // 
+            // panel_fsm_idle
+            // 
+            panel_fsm_idle.BorderStyle = BorderStyle.Fixed3D;
+            panel_fsm_idle.Location = new Point(46, 269);
+            panel_fsm_idle.Name = "panel_fsm_idle";
+            panel_fsm_idle.Size = new Size(30, 20);
+            panel_fsm_idle.TabIndex = 49;
+            // 
+            // label15
+            // 
+            label15.AutoSize = true;
+            label15.Font = new Font("Yet R", 12F, FontStyle.Regular, GraphicsUnit.Point, 129);
+            label15.Location = new Point(82, 314);
+            label15.Name = "label15";
+            label15.Size = new Size(95, 17);
+            label15.TabIndex = 52;
+            label15.Text = "AUTOMATIC";
+            // 
+            // panel_fsm_automatic
+            // 
+            panel_fsm_automatic.BorderStyle = BorderStyle.Fixed3D;
+            panel_fsm_automatic.Location = new Point(46, 314);
+            panel_fsm_automatic.Name = "panel_fsm_automatic";
+            panel_fsm_automatic.Size = new Size(30, 20);
+            panel_fsm_automatic.TabIndex = 51;
+            // 
+            // label16
+            // 
+            label16.AutoSize = true;
+            label16.Font = new Font("Yet R", 12F, FontStyle.Regular, GraphicsUnit.Point, 129);
+            label16.Location = new Point(82, 361);
+            label16.Name = "label16";
+            label16.Size = new Size(68, 17);
+            label16.TabIndex = 54;
+            label16.Text = "MANUAL";
+            // 
+            // panel_fsm_manual
+            // 
+            panel_fsm_manual.BorderStyle = BorderStyle.Fixed3D;
+            panel_fsm_manual.Location = new Point(46, 361);
+            panel_fsm_manual.Name = "panel_fsm_manual";
+            panel_fsm_manual.Size = new Size(30, 20);
+            panel_fsm_manual.TabIndex = 53;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(927, 466);
+            ClientSize = new Size(1308, 725);
+            Controls.Add(label16);
+            Controls.Add(panel_fsm_manual);
+            Controls.Add(label15);
+            Controls.Add(panel_fsm_automatic);
+            Controls.Add(label14);
+            Controls.Add(panel_fsm_idle);
+            Controls.Add(label13);
+            Controls.Add(label12);
+            Controls.Add(panel_fsm_disconnected);
+            Controls.Add(label11);
+            Controls.Add(textBox_large_duty_sp_delta);
+            Controls.Add(label10);
+            Controls.Add(label9);
+            Controls.Add(label8);
+            Controls.Add(textBox_sensor_thresh);
+            Controls.Add(textBox_sensor_l);
+            Controls.Add(textBox_sensor_r);
             Controls.Add(label7);
             Controls.Add(panel_off_right);
             Controls.Add(panel_right_sensor);
@@ -419,7 +617,7 @@ namespace LF_ROBOT_GUI
             Controls.Add(label4);
             Controls.Add(label3);
             Controls.Add(label2);
-            Controls.Add(textBox_duty_sp_delta_max);
+            Controls.Add(textBox_small_duty_sp_delta);
             Controls.Add(textBox_duty_sp);
             Controls.Add(button_byteOutput);
             Controls.Add(textBox_byteOutput);
@@ -468,7 +666,7 @@ namespace LF_ROBOT_GUI
         private TextBox textBox_byteOutput;
         private Button button_byteOutput;
         private TextBox textBox_duty_sp;
-        private TextBox textBox_duty_sp_delta_max;
+        private TextBox textBox_small_duty_sp_delta;
         private Label label2;
         private Label label3;
         private Label label4;
@@ -485,5 +683,22 @@ namespace LF_ROBOT_GUI
         private Panel panel_off_right;
         private Panel panel_right_sensor;
         private Label label7;
+        private TextBox textBox_sensor_r;
+        private TextBox textBox_sensor_l;
+        private TextBox textBox_sensor_thresh;
+        private Label label8;
+        private Label label9;
+        private Label label10;
+        private Label label11;
+        private TextBox textBox_large_duty_sp_delta;
+        private Panel panel_fsm_disconnected;
+        private Label label12;
+        private Label label13;
+        private Label label14;
+        private Panel panel_fsm_idle;
+        private Label label15;
+        private Panel panel_fsm_automatic;
+        private Label label16;
+        private Panel panel_fsm_manual;
     }
 }

@@ -16,8 +16,8 @@ namespace LF_ROBOT_GUI
         private Point _center;
         private Point _knobPosition;
         
-        private UInt16 _knobRadius= 15; // px
-        private UInt16 _size = 300; // size of joystick (px)
+        private UInt16 _knobRadius= 30; // px
+        private UInt16 _size = 500; // size of joystick (px)
 
         public Vector2 getPosRaw() { return new Vector2(_knobPosition.X, _knobPosition.Y); }
         

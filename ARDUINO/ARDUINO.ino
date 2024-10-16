@@ -23,6 +23,8 @@
 /// This will force the robot to only transmit the sensors data in a readible form for calibration
 #define DEBUG_OVERRIDE 0
 
+/// @todo SHOULD CHANGE THESE TO ARRAYS AND INDEX THEM WITH FUNCTIONS
+
 //Declare variables for storing the port values. 
 byte _output1 = 255;
 byte _output2 = 255;
@@ -30,10 +32,7 @@ byte _sensor_l  = 0;
 byte _sensor_r  = 0;
 
 //Declare variables for each byte of the message.
-byte _start_byte   = 0;
-byte _id_byte = 0;
-byte _data_byte    = 0;
-byte _check_byte   = 0;
+byte rx_buf [4] = { 0 };
 
 //Declare variable for calculating the check sum which is used to confirm that the correct bytes were identified as the four message bytes.
 byte checkSum = 0;
@@ -49,16 +48,16 @@ const byte START_DATA = 0xFE;
 
 enum SERIAL_CMD_MSG_ID
 {
-  STOP,
   HEARTBEAT,
-  DAC0,
-  DAC1
+  FSM_STATE
 };
 
 enum SERIAL_DATA_MSG_ID
 {
+  STOP,
   SENSORS,
-  FSM_STATE
+  DAC0,
+  DAC1
 };
 
 
@@ -67,7 +66,7 @@ enum SERIAL_DATA_MSG_ID
 uint32_t _last_heartbeat_rx_time_ms = 0;
 
 // MSG transmission rate definitions
-#define TX_RATE_FAST_MS 20
+#define TX_RATE_FAST_MS 14
 #define TX_RATE_MEDI_MS 50
 #define TX_RATE_SLOW_MS 100
 
@@ -117,7 +116,7 @@ FSM_STATES __FSM_STATE; // instance of FSM enum to keep track of the robot's cur
 //#################################################################################################//
 
 //    INIT
-void init_DACs ();
+void init_DACs    ();
 void init_sensors ();
 
 //    ROBOT CONTROLS
@@ -130,11 +129,13 @@ bool check_heartbeat_valid ( const uint32_t &time_ms );
 
 //    SERIAL COMMS
 void create_msg_buf ( byte start, byte id, byte data );
-void handle_serial_rx  ( const uint32_t &time_ms );
-void handle_cmd_msg_rx ( const uint32_t &time_ms );
+
+void handle_serial_rx   ( const uint32_t &time_ms );
+void handle_data_msg_rx ( const uint32_t &time_ms );
+void handle_cmd_msg_rx  ( const uint32_t &time_ms );
 
 void transmit_sensor_data ();
-void transmit_fsm_state ();
+void transmit_fsm_state   ();
 
 
 //    FSM 
@@ -218,15 +219,11 @@ void loop()
         break;
 
       case AUTO:
-        // check heartbeat timing for loss of comms
-        // send sensor data
-        // send state heartbeat
+        fsm_loop_auto ( time_ms );
         break;
 
       case MANUAL:
-        // check heartbeat timing for loss of comms
-        // send sensor data
-        // send state heartbeat
+        fsm_loop_manual ( time_ms );
         break;
     }
   }
@@ -304,61 +301,85 @@ void create_msg_buf ( byte start, byte id, byte data )
   tx_buf [0] = start;
   tx_buf [1] = id;
   tx_buf [2] = data;
-  tx_buf [3] = start + id + data;  
+  tx_buf [3] = start + id + data;
 }
 
 void handle_serial_rx ( const uint32_t &time_ms )
 {
   if (Serial.available() >= 4) // Check that a full package of four bytes has arrived in the buffer.
   {
-    _start_byte = Serial.read (); // Get the first available byte from the buffer, assuming that it is the start byte.
+    rx_buf[0] = Serial.read (); // Get the first available byte from the buffer, assuming that it is the start byte.
 
-    if ( _start_byte == START_CMD || _start_byte == START_DATA )
+    if ( rx_buf[0] == START_CMD || rx_buf[0] == START_DATA )
     {
-      //Read the remaining three bytes of the package into the respective variables.
-      _id_byte     = Serial.read();
-      _data_byte   = Serial.read();
-      _check_byte  = Serial.read();
+      //Read the remaining three bytes of the package into rx_buf
+      // offset the pointer by one byte and read 3 bytes
+      Serial.readBytes ( rx_buf + sizeof(byte), PACKET_SIZE_BYTES - 1 );
 
       // Calculate the check sum, this is also calculated in visual studio and is sent as he final byte of the package.
-      checkSum = _start_byte + _id_byte + _data_byte; 
+      checkSum = rx_buf[0] + rx_buf[1] + rx_buf[2]; 
     
-      if ( checkSum == _check_byte ) // ensure packet is valid before continuing to process
+      if ( checkSum == rx_buf[3] ) // ensure packet is valid before continuing to process
       {
-        if ( _start_byte == START_CMD )
+        if ( rx_buf[0] == START_CMD )
         {
           handle_cmd_msg_rx ( time_ms );
         }
-        else if ( _start_byte == START_DATA ) 
+        else if ( rx_buf[0] == START_DATA ) 
         {
-          // HANDLE DATA MSG RX
+          handle_data_msg_rx ( time_ms );
         }
       }
     }
   }
 }
 
-void handle_cmd_msg_rx ( const uint32_t &time_ms )
+
+void handle_data_msg_rx ( const uint32_t &time_ms )
 {
-  switch ( _id_byte )
+  switch ( rx_buf[1] )
   {
-    case DAC0:
-      _output1 = _data_byte;
-      output_DAC_1 ( _output1 );
-    break;
-
-    case DAC1:
-      _output2 = _data_byte;
-      output_DAC_2 ( _output2 );
-    break;
-
     case STOP:
       stop_robot ();
     break;
 
+    case DAC0: case DAC1:
+
+      // only utilise DAC data if in appropriate FSM state
+      if ( __FSM_STATE == MANUAL || __FSM_STATE == AUTO )
+      {
+        // safe to use rx DAC data to set DAC
+        if ( rx_buf[1] == DAC0 )
+          output_DAC_1 ( rx_buf[2] );
+        else if ( rx_buf[1] == DAC1 )
+          output_DAC_2 ( rx_buf[2] );
+      }
+
+    break;
+
+    default: break; // do nothing with other messages
+  }
+}
+
+
+void handle_cmd_msg_rx ( const uint32_t &time_ms )
+{
+  switch ( rx_buf[1] )
+  {
     case HEARTBEAT:
+
+      // update heartbeat rx timing
       _last_heartbeat_rx_time_ms = time_ms;
     break;
+
+
+    case FSM_STATE:
+
+      // transition to commanded FSM state
+      __FSM_STATE = (FSM_STATES)rx_buf[2];
+    break;
+
+    
   }
 }
 
@@ -376,7 +397,7 @@ void transmit_sensor_data ()
 
 void transmit_fsm_state ()
 {
-  create_msg_buf ( (byte)START_DATA, (byte)FSM_STATE, (byte)__FSM_STATE );
+  create_msg_buf ( (byte)START_CMD, (byte)FSM_STATE, (byte)__FSM_STATE );
   Serial.write ( tx_buf, PACKET_SIZE_BYTES );
 }
 
@@ -430,10 +451,44 @@ void fsm_loop_idle ( const uint32_t &time_ms )
 
 void fsm_loop_manual ( const uint32_t &time_ms )
 {
+  // ensure onboard led is emabled to indicate robot is active
+  digitalWrite ( LED_BUILTIN, 1 );
 
+  // poll sensors
+  poll_sensors ();
+
+  // MSG TRANSMISSION
+  if ( time_ms >= _next_fast_msg_tx_time_ms )
+  {
+    transmit_sensor_data ();
+    _next_fast_msg_tx_time_ms = time_ms + TX_RATE_FAST_MS;
+  }
+
+  if ( time_ms >= _next_slow_msg_tx_time_ms )
+  {
+    transmit_fsm_state ();
+    _next_slow_msg_tx_time_ms = time_ms + TX_RATE_SLOW_MS;
+  }
 }
 
 void fsm_loop_auto ( const uint32_t &time_ms )
 {
+  // ensure onboard led is emabled to indicate robot is active
+  digitalWrite ( LED_BUILTIN, 1 );
 
+  // poll sensors
+  poll_sensors ();
+
+  // MSG TRANSMISSION
+  if ( time_ms >= _next_fast_msg_tx_time_ms )
+  {
+    transmit_sensor_data ();
+    _next_fast_msg_tx_time_ms = time_ms + TX_RATE_FAST_MS;
+  }
+
+  if ( time_ms >= _next_slow_msg_tx_time_ms )
+  {
+    transmit_fsm_state ();
+    _next_slow_msg_tx_time_ms = time_ms + TX_RATE_SLOW_MS;
+  }
 }

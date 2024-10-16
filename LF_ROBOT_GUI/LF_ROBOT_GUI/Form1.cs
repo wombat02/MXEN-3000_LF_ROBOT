@@ -9,7 +9,7 @@ namespace LF_ROBOT_GUI
 {
     public partial class Form1 : Form
     {
-        
+
         /// <summary>
         /// Represents the possible configurations which can be represented with the two reflective sensors
         /// </summary>
@@ -28,8 +28,7 @@ namespace LF_ROBOT_GUI
         {
             ON_TRACK,
             OFF_LEFT,
-            OFF_RIGHT,
-            PERPENDICULAR
+            OFF_RIGHT
         }
 
         // behavior constants
@@ -47,8 +46,9 @@ namespace LF_ROBOT_GUI
         double sensor_threshold = 9;
         double sensor_left_raw, sensor_right_raw;
 
-        double MAX_DUTY_CYCLE = 0.63;
-        double TURN_DC_CHANGE = 0.12;
+        double duty_sp = 0.65;
+        double small_duty_sp_delta = 0.12;
+        double large_duty_sp_delta = 0.18;
 
         double K_P = 0.04;
         double K_I = 0.1;
@@ -66,7 +66,7 @@ namespace LF_ROBOT_GUI
         // Previous and current sensor states and time in state - will only update when state changes
         SensorStates prev_sensor_state = SensorStates.NEITHER_ON_LINE;
         SensorStates curr_sensor_state = SensorStates.NEITHER_ON_LINE;
-        RobotStates robot_state= RobotStates.ON_TRACK;
+        RobotStates robot_state = RobotStates.ON_TRACK;
         double time_in_prev_state = 0.0;
         double time_in_curr_state = 0.0;
 
@@ -84,18 +84,24 @@ namespace LF_ROBOT_GUI
         const byte DATA_MSG_START = 0xFE;
 
 
+        /// <summary>
+        /// Data messages are used by the robot and gui to communicate sensor and motor information
+        /// </summary>
         enum DATA_MSG_ID
         {
-            SENSORS,
-            FSM_STATE
-        }
-
-        enum CMD_MSG_ID
-        {
             STOP,
-            HEARTBEAT,
+            SENSORS,
             DAC0,
             DAC1
+        }
+
+        /// <summary>
+        /// Command messages are used by the robot and gui to communicate information about state
+        /// </summary>
+        enum CMD_MSG_ID
+        {
+            HEARTBEAT,
+            FSM_STATE
         }
 
         enum ROBOT_FSM_STATES
@@ -108,10 +114,23 @@ namespace LF_ROBOT_GUI
 
         ROBOT_FSM_STATES robot_fsm_state = ROBOT_FSM_STATES.DISABLE;
 
+
+        // REMOVE AND MAKE ENUM TO REPRESENT GUI STATE 
+        // USE BUTTONS TO CHANGE GUI STATE
         bool auto_mode_en = false;
 
 
-        private SerialPortStream serial; // nuGet package for .NET >= 5.0
+        /// <summary>
+        /// SerialPortStream is provided as a NuGet package for .NET versions >= 5.0
+        /// </summary>
+        private SerialPortStream serial;
+
+
+        //      DISPLAY PROPERTIES
+        Color LINE_DISPLAY_DEFAULT = Color.DarkGray;
+        Color LINE_DISPLAY_ACTIVE = Color.WhiteSmoke;
+        Color FSM_DISPLAY_DEFAULT = Color.WhiteSmoke;
+
 
         /*------------------------------------------------------------------------------------*/
         //                          FORM CONSTRUCTOR, OPEN & CLOSE
@@ -139,16 +158,23 @@ namespace LF_ROBOT_GUI
             // display a welcome message on the gui
             statusLabel.Text = DateTime.Now.ToShortDateString() + " Welcome to the LF_GUI. Make a serial connection to arduino board to get started!";
 
-            textBox_duty_sp.Text = MAX_DUTY_CYCLE.ToString();
-            textBox_duty_sp_delta_max.Text = TURN_DC_CHANGE.ToString();
+            textBox_duty_sp.Text = duty_sp.ToString();
+            textBox_small_duty_sp_delta.Text = small_duty_sp_delta.ToString();
+            textBox_large_duty_sp_delta.Text = large_duty_sp_delta.ToString();
 
             textBox_kp.Text = K_P.ToString();
             textBox_ki.Text = K_I.ToString();
 
-            prev_sensor_state = SensorStates.NEITHER_ON_LINE;
-            curr_sensor_state = SensorStates.NEITHER_ON_LINE;
+            prev_sensor_state = SensorStates.BOTH_ON_LINE;
+            curr_sensor_state = SensorStates.BOTH_ON_LINE;
             time_in_prev_state = 0.0;
             time_in_curr_state = 0.0;
+
+            //RESET LINE DISPLAY
+            resetLineDisplayColours();
+
+
+            textBox_sensor_thresh.Text = sensor_threshold.ToString();
         }
 
         private void Form1_OnClosing(Object sender, FormClosingEventArgs e)
@@ -166,19 +192,63 @@ namespace LF_ROBOT_GUI
             }
         }
 
-        /// <summary>
-        /// TX to both DAC PORTS the 50% duty cycle command to stop the robot.
-        /// </summary>
-        void SendStopCommand()
+        void TransmitStopCMD()
         {
-            int opcode_1 = (int)(0.5f * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
-            int opcode_2 = (int)(0.5f * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
-
-            // tuning is also done on cart
-            // consider having both ways to do this and only use stop data on cart for no coms?
-            TransmitCommandMessage(CMD_MSG_ID.STOP, 0);
+            TransmitDataMessage(DATA_MSG_ID.STOP, 0);
         }
 
+        private void handleLinePositionDisplay()
+        {
+            textBox_sensor_l.Text = sensor_left_raw.ToString();
+            textBox_sensor_r.Text = sensor_right_raw.ToString();
+
+            resetLineDisplayColours();
+            switch (robot_state)
+            {
+                case RobotStates.ON_TRACK:
+
+                    if (curr_sensor_state == SensorStates.BOTH_ON_LINE)
+                    {
+                        panel_mid.BackColor = LINE_DISPLAY_ACTIVE;
+                    }
+                    else if (curr_sensor_state == SensorStates.LEFT_ON_LINE)
+                    {
+                        panel_left_sensor.BackColor = LINE_DISPLAY_ACTIVE;
+                    }
+                    else
+                    {
+                        panel_right_sensor.BackColor = LINE_DISPLAY_ACTIVE;
+                    }
+
+                    break;
+
+                case RobotStates.OFF_LEFT:
+
+                    panel_off_right.BackColor = LINE_DISPLAY_ACTIVE;
+                    break;
+
+                case RobotStates.OFF_RIGHT:
+                    panel_off_left.BackColor = LINE_DISPLAY_ACTIVE;
+                    break;
+            }
+        }
+
+        private void resetLineDisplayColours()
+        {
+            panel_mid.BackColor = LINE_DISPLAY_DEFAULT;
+            panel_off_left.BackColor = LINE_DISPLAY_DEFAULT;
+            panel_off_right.BackColor = LINE_DISPLAY_DEFAULT;
+            panel_left_sensor.BackColor = LINE_DISPLAY_DEFAULT;
+            panel_right_sensor.BackColor = LINE_DISPLAY_DEFAULT;
+        }
+
+        private void resetFSMPanelColours()
+        {
+            panel_fsm_disconnected.BackColor = FSM_DISPLAY_DEFAULT;
+            panel_fsm_idle.BackColor = FSM_DISPLAY_DEFAULT;
+            panel_fsm_automatic.BackColor = FSM_DISPLAY_DEFAULT;
+            panel_fsm_manual.BackColor = FSM_DISPLAY_DEFAULT;
+        }
         /*------------------------------------------------------------------------------------*/
         //                          MAIN CONTROL LOOP
         /*------------------------------------------------------------------------------------*/
@@ -207,16 +277,17 @@ namespace LF_ROBOT_GUI
                     buf_indicator_val = int.Clamp(buf_indicator_val, 0, 100);
                     rx_buf_indicator.Value = buf_indicator_val;
 
-                    String msg = String.Format(
-                        "STATE: {0}    L: {1}    R: {2}",
-                        robot_fsm_state.ToString(),
-                        sensor_left_raw,
-                        sensor_right_raw
-                    );
-                    statusLabel.Text = msg;
 
+                    // HANDLE LINE STATE DISPLAY
+                    handleLinePositionDisplay();
+
+
+                    // HANDLE CONTROL LOOP ARBITRATION
                     if (auto_mode_en)
                     {
+                        // tell robot to enter auto state
+                        TransmitCommandMessage(CMD_MSG_ID.FSM_STATE, (byte)ROBOT_FSM_STATES.AUTO);
+
                         /// TODO AUTOMATIC CONTROL / IDLE STATE
                         AutomaticControlLoop();
 
@@ -227,6 +298,9 @@ namespace LF_ROBOT_GUI
                     {
                         if (joystickControl.Enabled)
                         {
+                            // tell robot to enter manual state
+                            TransmitCommandMessage(CMD_MSG_ID.FSM_STATE, (byte)ROBOT_FSM_STATES.MANUAL);
+
                             // send joystick commands to the robot for manual control
                             ManualControlLoop();
 
@@ -234,8 +308,11 @@ namespace LF_ROBOT_GUI
                         }
                         else
                         {
+                            // tell robot to enter idle state
+                            TransmitCommandMessage(CMD_MSG_ID.FSM_STATE, (byte)ROBOT_FSM_STATES.IDLE);
+
                             // tell robot to stop
-                            //SendStopCommand();
+                            TransmitStopCMD();
                         }
                     }
                 }
@@ -253,15 +330,41 @@ namespace LF_ROBOT_GUI
             {
                 if (serial.IsOpen)
                 {
+                    // handle indication of robot FSM state
+                    resetFSMPanelColours();
+                    switch (robot_fsm_state)
+                    {
+                        case ROBOT_FSM_STATES.IDLE:
 
+                            panel_fsm_idle.BackColor = Color.ForestGreen;
+                            break;
+
+                        case ROBOT_FSM_STATES.AUTO:
+
+                            panel_fsm_automatic.BackColor = Color.ForestGreen;
+                            break;
+
+                        case ROBOT_FSM_STATES.MANUAL:
+
+                            panel_fsm_manual.BackColor = Color.ForestGreen;
+                            break;
+                    }
 
                     // send heartbeat message
                     TransmitCommandMessage(CMD_MSG_ID.HEARTBEAT, 0);
                 }
                 else
                 {
-                    statusLabel.Text = "SERIAL CLOSED";
+                    // INDICATE ROBOT IS DISCONNECTED FROM GUI
+                    resetFSMPanelColours();
+                    panel_fsm_disconnected.BackColor = Color.DarkRed;
                 }
+            }
+            else
+            {
+                // INDICATE ROBOT IS DISCONNECTED FROM GUI
+                resetFSMPanelColours();
+                panel_fsm_disconnected.BackColor = Color.DarkRed;
             }
         }
 
@@ -280,25 +383,30 @@ namespace LF_ROBOT_GUI
 
             Vector2 joyPos = joystickControl.getPosNormalised();
 
-            float ch_1 = joyPos.Y / 2.0f + 0.5f;
-            float ch_2 = joyPos.Y / 2.0f + 0.5f;
+            /*
+            float y_scaled = joyPos.Y / 2.0f + 0.5f;
+            float x_scaled = joyPos.X / 2.0f + 0.5f;
+            */
 
-            int opcode_1 = (int)((1.0 - ch_1) * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
+            float ch_1_mix = float.Clamp(joyPos.Y - joyPos.X, -1, 1);
+            float ch_2_mix = float.Clamp(joyPos.Y + joyPos.X, -1, 1);
+
+            float ch_1 = ch_1_mix / 2.0f + 0.5f;
+            float ch_2 = ch_2_mix / 2.0f + 0.5f;
+
+            int opcode_1 = (int)((1.0f - ch_1) * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
             int opcode_2 = (int)(ch_2 * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
-
-            // convert interpolated compare voltage to an opcode
-            //int opcode = (int)(255.0 * (cmp_voltage / VREF));
 
 
             // send OPCode to DAC outputs
-            TransmitCommandMessage(CMD_MSG_ID.DAC0, (byte)opcode_1);
-            TransmitCommandMessage(CMD_MSG_ID.DAC1, (byte)opcode_2);
+            TransmitDataMessage(DATA_MSG_ID.DAC0, (byte)opcode_1);
+            TransmitDataMessage(DATA_MSG_ID.DAC1, (byte)opcode_2);
 
             // create message text to display joystick params on the status label
             String msg = String.Format(
-                "X: {0}     Y: {1}    PORT2: {2}    PORT3: {3}",
-                joyPos.X.ToString("0.00"),
-                joyPos.Y.ToString("0.00"),
+                "CH1: {0}     CH2: {1}    PORT2: {2}    PORT3: {3}",
+                ch_1.ToString("0.00"),
+                ch_2.ToString("0.00"),
                 opcode_1,
                 opcode_2
             );
@@ -311,27 +419,26 @@ namespace LF_ROBOT_GUI
 
         private void AutomaticControlLoop()
         {
-            // Duty cycle just below the value required to overcome load voltage and begin movement
-            const double robot_overshoot_stop_duty = 0.6;
-
             double curr_error_left;
             double curr_error_right;
 
             SensorStates this_sensor_state = SensorStates.NEITHER_ON_LINE;
 
-            // apply thresholding to sensor values to treat readings as either 0 ON LINE OR 1 OFF LINE
-            int sensor_left = (sensor_left_raw <= sensor_threshold ? 0 : 1);
-            int sensor_right = (sensor_right_raw <= sensor_threshold ? 0 : 1);
+            // apply thresholding to sensor values to treat readings as either 0 = ON LINE OR 1 = OFF LINE
+            bool sensor_left  = sensor_left_raw  >= sensor_threshold;
+            bool sensor_right = sensor_right_raw >= sensor_threshold;
+
 
             // Determine sensor state in this iteration of the control loop
-            if (sensor_left == 1)
+
+            if (sensor_left)
             {
                 // Case when sensors on either side of line OR robot off track
-                if (sensor_right == 1)
+                if (sensor_right)
                 {
                     this_sensor_state = SensorStates.NEITHER_ON_LINE;
                 }
-                // Case when right sensor on line - turn right
+                // Case when right sensor on line
                 else
                 {
                     this_sensor_state = SensorStates.RIGHT_ON_LINE;
@@ -339,12 +446,12 @@ namespace LF_ROBOT_GUI
             }
             else
             {
-                // Case when left sensor on line - turn left
-                if (sensor_right == 1)
+                // Case when left sensor on line
+                if (sensor_right)
                 {
                     this_sensor_state = SensorStates.LEFT_ON_LINE;
                 }
-                // Case when both sensors on the line - turn left/right depending on previous movement
+                // Case when both sensors on the line
                 else
                 {
                     this_sensor_state = SensorStates.BOTH_ON_LINE;
@@ -358,172 +465,102 @@ namespace LF_ROBOT_GUI
                 prev_sensor_state = curr_sensor_state;
                 curr_sensor_state = this_sensor_state;
 
+                // reset timing vars
                 time_in_prev_state = time_in_curr_state;
                 time_in_curr_state = 0.0;
+
+                // OFF TRACK DETECTION
+                if (curr_sensor_state == SensorStates.NEITHER_ON_LINE)
+                {
+                    // Determine which way the robot left the track
+                    if (prev_sensor_state == SensorStates.RIGHT_ON_LINE)
+                    {
+                        robot_state = RobotStates.OFF_LEFT;
+                    }
+                    else if (prev_sensor_state == SensorStates.LEFT_ON_LINE)
+                    {
+                        robot_state = RobotStates.OFF_RIGHT;
+                    }
+                }
+                else
+                {
+                    // robot must be on the track if 1 or more sensors detect the track
+                    robot_state = RobotStates.ON_TRACK;
+                }
             }
 
-            //switch (curr_sensor_state)
-            //{
-            //    // Robot either over the line (go straight) or off the line
-            //    case SensorState.NEITHER_ON_LINE:
-            //        goal_duty_left = MAX_DUTY_CYCLE;
-            //        goal_duty_right = MAX_DUTY_CYCLE;
-            //        break;
 
-            //    // Right sensor on the line
-            //    case SensorState.RIGHT_ON_LINE:
-            //        // Turn right
-            //        goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-            //        goal_duty_right = MAX_DUTY_CYCLE;
-            //        break;
-
-            //    // Left sensor on the line
-            //    case SensorState.LEFT_ON_LINE:
-            //        // Turn left
-            //        goal_duty_left = MAX_DUTY_CYCLE;
-            //        goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-            //        break;
-
-            //    // Both sensors on the line - need to determine which way currently turning
-            //    case SensorState.BOTH_ON_LINE:
-            //        goal_duty_left = MAX_DUTY_CYCLE;
-            //        goal_duty_right = MAX_DUTY_CYCLE;
-            //        break;
-            //}
-            switch (curr_sensor_state)
+            // arbitrate goal duty for L / R chanel based on robot & sensor state
+            switch (robot_state)
             {
-                // Robot either over the line (go straight) or off the line
-                case SensorStates.NEITHER_ON_LINE:
-                    // Robot came back to over the line OR is off line but is coming back over
-                    if ((curr_dc_left > curr_dc_right && prev_sensor_state == SensorStates.RIGHT_ON_LINE)
-                        || (curr_dc_right > curr_dc_left && prev_sensor_state == SensorStates.LEFT_ON_LINE)
-                        || (curr_dc_left == curr_dc_right))
-                    {
-                        // ACCOUNT FOR SHARP CORNERS - MIGHT NEED TO CHANGE THIS
-                        // If difference in duty cycle between left and right motors is greater
-                        // than 0.8 times the value added/subtract from maximum duty cycle when tuning, this
-                        // means that the robot is trying to take a sharp corner, so want to keep doing this
-                        if ((curr_dc_left - curr_dc_right) > 0.8 * TURN_DC_CHANGE)
-                        {
-                            // Turn to right sharply
-                            goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-                            goal_duty_right = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
-                        }
-                        else if ((curr_dc_right - curr_dc_left) > 0.8 * TURN_DC_CHANGE)
-                        {
-                            // Turn to left sharply
-                            goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
-                            goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-                        }
-                        // Otherwise if correctly straddling line
-                        else
-                        {
-                            // Go straight
-                            goal_duty_left = MAX_DUTY_CYCLE;
-                            goal_duty_right = MAX_DUTY_CYCLE;
-                        }
-                    }
-                    // Robot went off line to the right and is turning right
-                    else if (curr_dc_left > curr_dc_right && prev_sensor_state == SensorStates.LEFT_ON_LINE)
-                    {
-                        // Stop robot
-                        curr_dc_left = robot_overshoot_stop_duty;
-                        curr_dc_right = robot_overshoot_stop_duty;
+                case RobotStates.OFF_LEFT:
 
-                        // Turn to left
-                        goal_duty_left = MAX_DUTY_CYCLE;
-                        goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-                    }
-                    // Robot went off line to the left and is turning left
-                    else if (curr_dc_right > curr_dc_left && prev_sensor_state == SensorStates.RIGHT_ON_LINE)
-                    {
-                        // Stop robot
-                        curr_dc_left = robot_overshoot_stop_duty;
-                        curr_dc_right = robot_overshoot_stop_duty;
+                    // sharp turn right
+                    goal_duty_left = duty_sp + large_duty_sp_delta;
+                    goal_duty_right = duty_sp - large_duty_sp_delta;
 
-                        // Turn to right sharpl
-                        goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-                        goal_duty_right = MAX_DUTY_CYCLE;
+                    break;
+
+                case RobotStates.OFF_RIGHT:
+
+                    // sharp turn left
+                    goal_duty_left = duty_sp - large_duty_sp_delta;
+                    goal_duty_right = duty_sp + large_duty_sp_delta;
+
+                    break;
+
+                case RobotStates.ON_TRACK:
+
+                    if (curr_sensor_state == SensorStates.BOTH_ON_LINE)
+                    {
+                        // FULL PISS AHEAD
+                        goal_duty_left = goal_duty_right = duty_sp;
                     }
-                    // Unknown state
                     else
                     {
-                        // Stop robot
-                        curr_dc_left = robot_overshoot_stop_duty;
-                        curr_dc_right = robot_overshoot_stop_duty;
-
-                        // Spin on the spot slowly - hopefully find line again
-                        goal_duty_left = MAX_DUTY_CYCLE - TURN_DC_CHANGE;
-                        goal_duty_right = (1 - MAX_DUTY_CYCLE) + TURN_DC_CHANGE;
+                        // ONE sensor is OFF the track
+                        // determine which direction to turn
+                        if (curr_sensor_state == SensorStates.LEFT_ON_LINE)
+                        {
+                            // continue turning left slowly
+                            goal_duty_left = duty_sp - small_duty_sp_delta;
+                            goal_duty_right = duty_sp + small_duty_sp_delta;
+                        }
+                        else if (curr_sensor_state == SensorStates.RIGHT_ON_LINE)
+                        {
+                            // continue turning right slowly
+                            goal_duty_left = duty_sp + small_duty_sp_delta;
+                            goal_duty_right = duty_sp - small_duty_sp_delta;
+                        }
                     }
-                    break;
 
-                // Right sensor on the line
-                case SensorStates.RIGHT_ON_LINE:
-                    // Turn right
-                    goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-                    goal_duty_right = MAX_DUTY_CYCLE;
-                    break;
-
-                // Left sensor on the line
-                case SensorStates.LEFT_ON_LINE:
-                    // Turn left
-                    goal_duty_left = MAX_DUTY_CYCLE;
-                    goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-                    break;
-
-                // Both sensors on the line - need to determine which way currently turning
-                case SensorStates.BOTH_ON_LINE:
-                    // Robot was previously turning left
-                    if (prev_sensor_state == SensorStates.LEFT_ON_LINE)
-                    {
-                        // Turn right
-                        goal_duty_left = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-                        goal_duty_right = MAX_DUTY_CYCLE;
-                    }
-                    // Robot was previously turning right
-                    else if (prev_sensor_state == SensorStates.RIGHT_ON_LINE)
-                    {
-                        // Turn left
-                        goal_duty_left = MAX_DUTY_CYCLE;
-                        goal_duty_right = MAX_DUTY_CYCLE + TURN_DC_CHANGE;
-                    }
-                    // Unlikely state, but handled anyway
-                    else
-                    {
-                        goal_duty_left = MAX_DUTY_CYCLE;
-                        goal_duty_right = MAX_DUTY_CYCLE;
-                    }
                     break;
             }
-
-            //goal_duty_left  = double.Clamp(goal_duty_left,  0.0, 1.0);
-            //goal_duty_right = double.Clamp(goal_duty_right, 0.0, 1.0);
 
             // Calculate error at current step
-            curr_error_left = goal_duty_left - curr_dc_left;
+            curr_error_left  = goal_duty_left  - curr_dc_left;
             curr_error_right = goal_duty_right - curr_dc_right;
 
             // Add current error multiplied by time since last step to error sum - integral part of control
-            error_sum_left += curr_error_left * dt/1000;
-            error_sum_right += curr_error_right * dt/1000;
+            error_sum_left  += curr_error_left  * dt / 1000;
+            error_sum_right += curr_error_right * dt / 1000;
 
             // PI control: use error sum instead of integral error
-            curr_dc_left += curr_error_left * K_P + error_sum_left * K_I;
+            curr_dc_left  += curr_error_left  * K_P + error_sum_left  * K_I;
             curr_dc_right += curr_error_right * K_P + error_sum_right * K_I;
 
             // Clamp the duty cycles to [0.0, 1.0] just in case
-            curr_dc_left = double.Clamp(curr_dc_left, 0.0, 1.0);
+            curr_dc_left  = double.Clamp(curr_dc_left,  0.0, 1.0);
             curr_dc_right = double.Clamp(curr_dc_right, 0.0, 1.0);
 
             // Convert desired duty cycle to binary code for DACs
-            int opcode_left = (int)(curr_dc_left * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
+            int opcode_left  = (int)(curr_dc_left * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
             int opcode_right = (int)((1.0f - curr_dc_right) * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
 
 
             // SEND MOTOR COMMANDS
-            TransmitCommandMessage(CMD_MSG_ID.DAC0, (byte)opcode_left);
-            TransmitCommandMessage(CMD_MSG_ID.DAC1, (byte)opcode_right);
+            TransmitDataMessage(DATA_MSG_ID.DAC0, (byte)opcode_left);
+            TransmitDataMessage(DATA_MSG_ID.DAC1, (byte)opcode_right);
 
             // create message text to display joystick params on the status label
             String msg = String.Format(
@@ -592,37 +629,61 @@ namespace LF_ROBOT_GUI
             }
         }
 
+        /// <summary>
+        /// This function is run on a seperate thread to the GUI
+        /// Take advantage of this and use a while loop to ensure all RX data is processed ensuring data
+        /// doesn't end up accumulating in the serial buffer
+        /// </summary>
+        /// <param name="s"></param>
+        /// <param name="e"></param>
         private void SerialPortStream_DataReceived(object? s, SerialDataReceivedEventArgs e)
         {
-            // check and calculate checksum to determine data validity
-            //          HANDLE RX   -----------------------------
             while (serial.BytesToRead >= 4)
             {
-                // full packet available
-                int bytes_read = serial.Read(rx_buf, 0, rx_buf.Length);
+                // read first byte and check if it matches a start ID
+                serial.Read(rx_buf, 0, 1);
 
-                // confirm checksum
-                // C# byte arithmetic is promoted to int
-                // simulate overflow by masking with 0xFF
-                byte checksum = (byte)((rx_buf[0] + rx_buf[1] + rx_buf[2]) & 0xFF);
-                if (checksum == rx_buf[3])
+                if (rx_buf[0] == CMD_MSG_START || rx_buf[0] == DATA_MSG_START)
                 {
-                    if (rx_buf[0] == CMD_MSG_START)
+                    // read remaining bytes into rx_buf
+                    serial.Read(rx_buf, 1, rx_buf.Length - 1);
+
+                    // confirm checksum
+                    // C# byte arithmetic is promoted to int
+                    // simulate overflow by masking with 0xFF
+                    byte checksum = (byte)((rx_buf[0] + rx_buf[1] + rx_buf[2]) & 0xFF);
+                    if (checksum == rx_buf[3])
                     {
-                        HandleCommandMessageRX();
-                    }
-                    else if (rx_buf[0] == DATA_MSG_START)
-                    {
-                        HandleDataMessageRX();
+                        if (rx_buf[0] == CMD_MSG_START)
+                        {
+                            HandleCommandMessageRX();
+                        }
+                        else if (rx_buf[0] == DATA_MSG_START)
+                        {
+                            HandleDataMessageRX();
+                        }
                     }
                 }
             }
-            //          HANDLE RX   -----------------------------
         }
 
         private void HandleCommandMessageRX()
         {
+            CMD_MSG_ID msg_id = (CMD_MSG_ID)rx_buf[1];
 
+            switch (msg_id)
+            {
+                case CMD_MSG_ID.HEARTBEAT:
+
+                    // TODO USE HEARTBEAT FROM ROBOT TO ALLOW GUI TO RECOGNISE ARDUINO HALT
+                    break;
+
+                case CMD_MSG_ID.FSM_STATE:
+
+                    // upate cached robot fsm state
+                    robot_fsm_state = (ROBOT_FSM_STATES)rx_buf[2];
+                    break;
+            }
         }
 
         private void HandleDataMessageRX()
@@ -642,9 +703,7 @@ namespace LF_ROBOT_GUI
 
                     break;
 
-                case DATA_MSG_ID.FSM_STATE:
-                    robot_fsm_state = (ROBOT_FSM_STATES)rx_buf[2];
-                    break;
+                default: break; // do nothing with other robot data msgs
             }
         }
 
@@ -704,7 +763,7 @@ namespace LF_ROBOT_GUI
                 {
                     if (serial.IsOpen)
                     {
-                        SendStopCommand();
+                        TransmitStopCMD();
                     }
                 }
             }
@@ -814,7 +873,7 @@ namespace LF_ROBOT_GUI
             // parse pwm %
             try
             {
-                MAX_DUTY_CYCLE = double.Parse(textBox_duty_sp.Text);
+                duty_sp = double.Parse(textBox_duty_sp.Text);
             }
             catch (Exception ex)
             {
@@ -822,12 +881,25 @@ namespace LF_ROBOT_GUI
             }
         }
 
-        private void textBox_duty_sp_delta_max_TextChanged(object sender, EventArgs e)
+        private void textBox_small_duty_sp_delta_TextChanged(object sender, EventArgs e)
         {
             // parse pwm %
             try
             {
-                TURN_DC_CHANGE = double.Parse(textBox_duty_sp_delta_max.Text);
+                small_duty_sp_delta = double.Parse(textBox_small_duty_sp_delta.Text);
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = ex.Message;
+            }
+        }
+
+        private void textBox_large_duty_sp_delta_TextChanged(object sender, EventArgs e)
+        {
+            // parse pwm %
+            try
+            {
+                large_duty_sp_delta = double.Parse(textBox_large_duty_sp_delta.Text);
             }
             catch (Exception ex)
             {
@@ -858,6 +930,9 @@ namespace LF_ROBOT_GUI
 
                 goal_duty_left = 0.0;
                 goal_duty_right = 0.0;
+
+                prev_sensor_state = curr_sensor_state = SensorStates.BOTH_ON_LINE;
+                robot_state = RobotStates.ON_TRACK;
             }
         }
 
@@ -883,6 +958,18 @@ namespace LF_ROBOT_GUI
             {
                 statusLabel.Text = ex.Message;
             }
-        }   
-    } 
+        }
+
+        private void textBox_sensor_thresh_TextChanged(object sender, EventArgs e)
+        {
+            try
+            {
+                sensor_threshold = int.Parse(textBox_sensor_thresh.Text);
+            }
+            catch (Exception ex)
+            {
+                statusLabel.Text = ex.Message;
+            }
+        }
+    }
 }  
