@@ -47,11 +47,11 @@ namespace LF_ROBOT_GUI
         double sensor_left_raw, sensor_right_raw;
 
         double duty_sp = 0.65;
-        double small_duty_sp_delta = 0.12;
-        double large_duty_sp_delta = 0.18;
+        double small_duty_sp_delta = 0.08;
+        double large_duty_sp_delta = 0.12;
 
-        double K_P = 0.04;
-        double K_I = 0.1;
+        double K_P = 0.1;
+        double K_I = 0.04;
 
         double error_sum_left = 0.0;
         double error_sum_right = 0.0;
@@ -67,8 +67,6 @@ namespace LF_ROBOT_GUI
         SensorStates prev_sensor_state = SensorStates.NEITHER_ON_LINE;
         SensorStates curr_sensor_state = SensorStates.NEITHER_ON_LINE;
         RobotStates robot_state = RobotStates.ON_TRACK;
-        double time_in_prev_state = 0.0;
-        double time_in_curr_state = 0.0;
 
         // SERIAL COMMUNICATION
 
@@ -167,8 +165,7 @@ namespace LF_ROBOT_GUI
 
             prev_sensor_state = SensorStates.BOTH_ON_LINE;
             curr_sensor_state = SensorStates.BOTH_ON_LINE;
-            time_in_prev_state = 0.0;
-            time_in_curr_state = 0.0;
+            robot_state = RobotStates.ON_TRACK;
 
             //RESET LINE DISPLAY
             resetLineDisplayColours();
@@ -249,6 +246,24 @@ namespace LF_ROBOT_GUI
             panel_fsm_automatic.BackColor = FSM_DISPLAY_DEFAULT;
             panel_fsm_manual.BackColor = FSM_DISPLAY_DEFAULT;
         }
+
+        private void resetAllPIVars ()
+        {
+            /// RESET ALL PI CONTROL VARS
+            error_sum_left = 0.0;
+            error_sum_right = 0.0;
+            dt = 0.0;    // Time since last update of the DC in the PI control loop
+            curr_dc_left = 0.5; // Current DC for left motor
+            curr_dc_right = 0.5; // Current DC for right motor
+
+
+            goal_duty_left = 0.0;
+            goal_duty_right = 0.0;
+
+            prev_sensor_state = SensorStates.BOTH_ON_LINE;
+            curr_sensor_state = SensorStates.BOTH_ON_LINE;
+            robot_state = RobotStates.ON_TRACK;
+        }
         /*------------------------------------------------------------------------------------*/
         //                          MAIN CONTROL LOOP
         /*------------------------------------------------------------------------------------*/
@@ -263,8 +278,6 @@ namespace LF_ROBOT_GUI
         {
             // Need to increment these every tick
             dt += timer1.Interval;  // Will get reset to zero again if joystick enabled
-            time_in_prev_state += timer1.Interval;
-            time_in_curr_state += timer1.Interval;
 
             if (serial != null)
             {
@@ -465,10 +478,6 @@ namespace LF_ROBOT_GUI
                 prev_sensor_state = curr_sensor_state;
                 curr_sensor_state = this_sensor_state;
 
-                // reset timing vars
-                time_in_prev_state = time_in_curr_state;
-                time_in_curr_state = 0.0;
-
                 // OFF TRACK DETECTION
                 if (curr_sensor_state == SensorStates.NEITHER_ON_LINE)
                 {
@@ -480,6 +489,21 @@ namespace LF_ROBOT_GUI
                     else if (prev_sensor_state == SensorStates.LEFT_ON_LINE)
                     {
                         robot_state = RobotStates.OFF_RIGHT;
+                    }
+                    else if ( prev_sensor_state == SensorStates.BOTH_ON_LINE )
+                    {
+                        // guess which way we should go based on current duty cycles
+
+                        if (curr_dc_left > curr_dc_right)
+                        {
+                            // L > R => OFF RIGHT
+                            robot_state = RobotStates.OFF_RIGHT;
+                        }
+                        else
+                        {
+                            // R > L => OFF LEFT
+                            robot_state = RobotStates.OFF_LEFT;
+                        }
                     }
                 }
                 else
@@ -496,7 +520,7 @@ namespace LF_ROBOT_GUI
                 case RobotStates.OFF_LEFT:
 
                     // sharp turn right
-                    goal_duty_left = duty_sp + large_duty_sp_delta;
+                    goal_duty_left  = duty_sp + large_duty_sp_delta;
                     goal_duty_right = duty_sp - large_duty_sp_delta;
 
                     break;
@@ -504,7 +528,7 @@ namespace LF_ROBOT_GUI
                 case RobotStates.OFF_RIGHT:
 
                     // sharp turn left
-                    goal_duty_left = duty_sp - large_duty_sp_delta;
+                    goal_duty_left  = duty_sp - large_duty_sp_delta;
                     goal_duty_right = duty_sp + large_duty_sp_delta;
 
                     break;
@@ -523,13 +547,13 @@ namespace LF_ROBOT_GUI
                         if (curr_sensor_state == SensorStates.LEFT_ON_LINE)
                         {
                             // continue turning left slowly
-                            goal_duty_left = duty_sp - small_duty_sp_delta;
+                            goal_duty_left  = duty_sp - small_duty_sp_delta;
                             goal_duty_right = duty_sp + small_duty_sp_delta;
                         }
                         else if (curr_sensor_state == SensorStates.RIGHT_ON_LINE)
                         {
                             // continue turning right slowly
-                            goal_duty_left = duty_sp + small_duty_sp_delta;
+                            goal_duty_left  = duty_sp + small_duty_sp_delta;
                             goal_duty_right = duty_sp - small_duty_sp_delta;
                         }
                     }
@@ -554,7 +578,7 @@ namespace LF_ROBOT_GUI
             curr_dc_right = double.Clamp(curr_dc_right, 0.0, 1.0);
 
             // Convert desired duty cycle to binary code for DACs
-            int opcode_left  = (int)(curr_dc_left * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
+            int opcode_left = (int)((curr_dc_left) * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
             int opcode_right = (int)((1.0f - curr_dc_right) * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
 
 
@@ -874,6 +898,7 @@ namespace LF_ROBOT_GUI
             try
             {
                 duty_sp = double.Parse(textBox_duty_sp.Text);
+                resetAllPIVars();
             }
             catch (Exception ex)
             {
@@ -887,6 +912,7 @@ namespace LF_ROBOT_GUI
             try
             {
                 small_duty_sp_delta = double.Parse(textBox_small_duty_sp_delta.Text);
+                resetAllPIVars();
             }
             catch (Exception ex)
             {
@@ -900,6 +926,7 @@ namespace LF_ROBOT_GUI
             try
             {
                 large_duty_sp_delta = double.Parse(textBox_large_duty_sp_delta.Text);
+                resetAllPIVars();
             }
             catch (Exception ex)
             {
@@ -911,6 +938,7 @@ namespace LF_ROBOT_GUI
         {
             // toggle state
             auto_mode_en = !auto_mode_en;
+            resetAllPIVars();
 
             if (auto_mode_en)
             {
@@ -919,20 +947,6 @@ namespace LF_ROBOT_GUI
             else
             {
                 button_auto_engage.Text = "START AUTO";
-
-                /// RESET ALL PI CONTROL VARS
-                error_sum_left = 0.0;
-                error_sum_right = 0.0;
-                dt = 0.0;    // Time since last update of the DC in the PI control loop
-                curr_dc_left = 0.5; // Current DC for left motor
-                curr_dc_right = 0.5; // Current DC for right motor
-
-
-                goal_duty_left = 0.0;
-                goal_duty_right = 0.0;
-
-                prev_sensor_state = curr_sensor_state = SensorStates.BOTH_ON_LINE;
-                robot_state = RobotStates.ON_TRACK;
             }
         }
 
@@ -941,6 +955,7 @@ namespace LF_ROBOT_GUI
             try
             {
                 K_P = double.Parse(textBox_kp.Text);
+                resetAllPIVars();
             }
             catch (Exception ex)
             {
@@ -953,6 +968,7 @@ namespace LF_ROBOT_GUI
             try
             {
                 K_I = double.Parse(textBox_ki.Text);
+                resetAllPIVars();
             }
             catch (Exception ex)
             {
