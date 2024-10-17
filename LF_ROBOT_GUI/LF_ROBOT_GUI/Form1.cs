@@ -37,6 +37,9 @@ namespace LF_ROBOT_GUI
         const double V_CMP_MAX = 12.15;     // 
         const double VCC = 15.0;            // Magnitude of the supply voltage
 
+        // coefficient for the right belt to overcome tension issues
+        const double RIGHT_BELT_COMP_FACTOR = 0.2;
+
         const int OP_CMP_MIN_1 = 79;
         const int OP_CMP_MAX_1 = 255;
 
@@ -46,12 +49,12 @@ namespace LF_ROBOT_GUI
         double sensor_threshold = 9;
         double sensor_left_raw, sensor_right_raw;
 
-        double duty_sp = 0.65;
-        double small_duty_sp_delta = 0.08;
-        double large_duty_sp_delta = 0.12;
+        double duty_sp = 0.75;
+        double small_duty_sp_delta = 0.075;
+        double large_duty_sp_delta = 0.2;
 
-        double K_P = 0.1;
-        double K_I = 0.04;
+        double K_P = 0.25;
+        double K_I = 0.03;
 
         double error_sum_left = 0.0;
         double error_sum_right = 0.0;
@@ -520,16 +523,16 @@ namespace LF_ROBOT_GUI
                 case RobotStates.OFF_LEFT:
 
                     // sharp turn right
-                    goal_duty_left  = duty_sp + large_duty_sp_delta;
-                    goal_duty_right = duty_sp - large_duty_sp_delta;
+                    goal_duty_left  = 0.5 + large_duty_sp_delta;
+                    goal_duty_right = 0.5 - (1.0 + RIGHT_BELT_COMP_FACTOR) * large_duty_sp_delta;
 
                     break;
 
                 case RobotStates.OFF_RIGHT:
 
                     // sharp turn left
-                    goal_duty_left  = duty_sp - large_duty_sp_delta;
-                    goal_duty_right = duty_sp + large_duty_sp_delta;
+                    goal_duty_left  = 0.5 - large_duty_sp_delta;
+                    goal_duty_right = 0.5 + (1.0 + RIGHT_BELT_COMP_FACTOR) * large_duty_sp_delta;
 
                     break;
 
@@ -547,14 +550,14 @@ namespace LF_ROBOT_GUI
                         if (curr_sensor_state == SensorStates.LEFT_ON_LINE)
                         {
                             // continue turning left slowly
-                            goal_duty_left  = duty_sp - small_duty_sp_delta;
-                            goal_duty_right = duty_sp + small_duty_sp_delta;
+                            goal_duty_right = duty_sp - small_duty_sp_delta;
+                            goal_duty_left  = 0.5;
                         }
                         else if (curr_sensor_state == SensorStates.RIGHT_ON_LINE)
                         {
                             // continue turning right slowly
-                            goal_duty_left  = duty_sp + small_duty_sp_delta;
-                            goal_duty_right = duty_sp - small_duty_sp_delta;
+                            goal_duty_left  = duty_sp - small_duty_sp_delta;
+                            goal_duty_right = 0.5;
                         }
                     }
 
