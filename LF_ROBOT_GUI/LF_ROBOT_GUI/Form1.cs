@@ -3,13 +3,10 @@ using System.Numerics;
 using System.Runtime.Serialization;
 using System.Timers;
 
-
-
 namespace LF_ROBOT_GUI
 {
     public partial class Form1 : Form
     {
-
         /// <summary>
         /// Represents the possible configurations which can be represented with the two reflective sensors
         /// </summary>
@@ -34,56 +31,63 @@ namespace LF_ROBOT_GUI
         // behavior constants
         const double VREF = 15.0;           // Reference voltage 
         const double V_CMP_MIN = 1.4;       // compare setpoint minimum
-        const double V_CMP_MAX = 12.15;     // 
+        const double V_CMP_MAX = 12.15;     // compare setpoint maximum
         const double VCC = 15.0;            // Magnitude of the supply voltage
 
-        // coefficient for the right belt to overcome tension issues
+        // Coefficient for the right belt to overcome firction issues
+        // Unable to fully remove losses caused by losses in the drive and non-drive wheels
+        // This causes the right track to have a higher stall voltage
         const double RIGHT_BELT_COMP_FACTOR = 0.2;
 
-        const int OP_CMP_MIN_1 = 79;
-        const int OP_CMP_MAX_1 = 255;
+        // Left motor
+        const int OP_CMP_MIN_1 = 79;    // DAC code for 0% duty cycle
+        const int OP_CMP_MAX_1 = 255;   // DAC code for 100% duty cycle
 
-        const int OP_CMP_MIN_2 = 36;
-        const int OP_CMP_MAX_2 = 255;
+        // Right motor
+        const int OP_CMP_MIN_2 = 36;    // DAC code for 0% duty cycle
+        const int OP_CMP_MAX_2 = 255;   // DAC code for 100% duty cycle
 
+        // Threshold value for whether sensor reading considered on/off the line
         double sensor_threshold = 9;
+        // Raw sensor values of last sensor reading
         double sensor_left_raw, sensor_right_raw;
 
-        double duty_sp = 0.75;
-        double small_duty_sp_delta = 0.075;
-        double large_duty_sp_delta = 0.2;
+        double duty_sp = 0.75;              // Maximum speed
+        double small_duty_sp_delta = 0.075; // Delta for gradual turn
+        double large_duty_sp_delta = 0.2;   // Delta for sharp turn
 
-        double K_P = 0.25;
-        double K_I = 0.03;
+        double K_P = 0.25;  // Proportional constant
+        double K_I = 0.03;  // Integral constant
 
-        double error_sum_left = 0.0;
-        double error_sum_right = 0.0;
+        double error_sum_left = 0.0;    // Total error in left motor duty cycle
+        double error_sum_right = 0.0;   // Total error in right motor duty cycle
         double dt = 0.0;    // Time since last update of the DC in the PI control loop
         double curr_dc_left = 0.5; // Current DC for left motor
         double curr_dc_right = 0.5; // Current DC for right motor
 
-
+        // Duty cycles for PI algorithm to aim for
         double goal_duty_left = 0.0;
         double goal_duty_right = 0.0;
 
-        // Previous and current sensor states and time in state - will only update when state changes
+        // Previous and current sensor states - will only update when state changes
         SensorStates prev_sensor_state = SensorStates.NEITHER_ON_LINE;
         SensorStates curr_sensor_state = SensorStates.NEITHER_ON_LINE;
         RobotStates robot_state = RobotStates.ON_TRACK;
 
+
         // SERIAL COMMUNICATION
 
-        // used to indicate when the rx buffer is overfilling indicating the gui cannot handle packets quickly enough
+        // used to indicate when the rx buffer is overfilling,
+        // indicating that the gui cannot handle packets quickly enough
         const int RX_BUFF_FULL_THRESH = 32;
 
         // rx / tx buffers
         byte[] tx_buf = new byte[4];
-        // MSG TYPES
         byte[] rx_buf = new byte[4];
 
+        // Byte to indicate start of command and data messages
         const byte CMD_MSG_START = 0xFF;
         const byte DATA_MSG_START = 0xFE;
-
 
         /// <summary>
         /// Data messages are used by the robot and gui to communicate sensor and motor information
@@ -105,6 +109,7 @@ namespace LF_ROBOT_GUI
             FSM_STATE
         }
 
+        // The different FSM states are used to determine what sort of action the robot should take
         enum ROBOT_FSM_STATES
         {
             DISABLE,
@@ -113,19 +118,16 @@ namespace LF_ROBOT_GUI
             MANUAL
         }
 
+        // Current robot state
         ROBOT_FSM_STATES robot_fsm_state = ROBOT_FSM_STATES.DISABLE;
 
-
-        // REMOVE AND MAKE ENUM TO REPRESENT GUI STATE 
-        // USE BUTTONS TO CHANGE GUI STATE
+        // Has the automatic mode button been pressed?
         bool auto_mode_en = false;
-
 
         /// <summary>
         /// SerialPortStream is provided as a NuGet package for .NET versions >= 5.0
         /// </summary>
         private SerialPortStream serial;
-
 
         //      DISPLAY PROPERTIES
         Color LINE_DISPLAY_DEFAULT = Color.DarkGray;
@@ -136,8 +138,6 @@ namespace LF_ROBOT_GUI
         /*------------------------------------------------------------------------------------*/
         //                          FORM CONSTRUCTOR, OPEN & CLOSE
         /*------------------------------------------------------------------------------------*/
-
-
 
         public Form1()
         {
@@ -157,24 +157,24 @@ namespace LF_ROBOT_GUI
         private void Form1_Load(object sender, EventArgs e)
         {
             // display a welcome message on the gui
-            statusLabel.Text = DateTime.Now.ToShortDateString() + " Welcome to the LF_GUI. Make a serial connection to arduino board to get started!";
+            statusLabel.Text = DateTime.Now.ToShortDateString() + 
+                " Welcome to the LF_GUI. Make a serial connection to arduino board to get started!";
 
+            // Initialise values displayed in input boxes
             textBox_duty_sp.Text = duty_sp.ToString();
             textBox_small_duty_sp_delta.Text = small_duty_sp_delta.ToString();
             textBox_large_duty_sp_delta.Text = large_duty_sp_delta.ToString();
-
             textBox_kp.Text = K_P.ToString();
             textBox_ki.Text = K_I.ToString();
+            textBox_sensor_thresh.Text = sensor_threshold.ToString();
 
+            // Initialise robot and sensor states
             prev_sensor_state = SensorStates.BOTH_ON_LINE;
             curr_sensor_state = SensorStates.BOTH_ON_LINE;
             robot_state = RobotStates.ON_TRACK;
 
             //RESET LINE DISPLAY
             resetLineDisplayColours();
-
-
-            textBox_sensor_thresh.Text = sensor_threshold.ToString();
         }
 
         private void Form1_OnClosing(Object sender, FormClosingEventArgs e)
@@ -192,17 +192,22 @@ namespace LF_ROBOT_GUI
             }
         }
 
+        // Function for entering robot into stopped mode
         void TransmitStopCMD()
         {
             TransmitDataMessage(DATA_MSG_ID.STOP, 0);
         }
 
+        // Function for displaying the position of the line relative to the robot
         private void handleLinePositionDisplay()
         {
+            // Display raw sensor value readings
             textBox_sensor_l.Text = sensor_left_raw.ToString();
             textBox_sensor_r.Text = sensor_right_raw.ToString();
 
             resetLineDisplayColours();
+            
+            // Change colour of boxes depending on robot and sensor states
             switch (robot_state)
             {
                 case RobotStates.ON_TRACK:
@@ -233,6 +238,7 @@ namespace LF_ROBOT_GUI
             }
         }
 
+        // Function to reset colour of boxes for displaying line position
         private void resetLineDisplayColours()
         {
             panel_mid.BackColor = LINE_DISPLAY_DEFAULT;
@@ -242,6 +248,7 @@ namespace LF_ROBOT_GUI
             panel_right_sensor.BackColor = LINE_DISPLAY_DEFAULT;
         }
 
+        // Function to reset colour of boxes for displaying FSM state
         private void resetFSMPanelColours()
         {
             panel_fsm_disconnected.BackColor = FSM_DISPLAY_DEFAULT;
@@ -250,19 +257,22 @@ namespace LF_ROBOT_GUI
             panel_fsm_manual.BackColor = FSM_DISPLAY_DEFAULT;
         }
 
+        // Function for resetting control variables
+        // Called whenever a parameter is changed or auto mode is disabled
         private void resetAllPIVars ()
         {
-            /// RESET ALL PI CONTROL VARS
+            // Reset PI algorithm variables
             error_sum_left = 0.0;
             error_sum_right = 0.0;
-            dt = 0.0;    // Time since last update of the DC in the PI control loop
-            curr_dc_left = 0.5; // Current DC for left motor
-            curr_dc_right = 0.5; // Current DC for right motor
+            dt = 0.0;
+            curr_dc_left = 0.5;
+            curr_dc_right = 0.5;
 
-
+            // Reset goal duty cycles
             goal_duty_left = 0.0;
             goal_duty_right = 0.0;
 
+            // Reset robot and sensor states
             prev_sensor_state = SensorStates.BOTH_ON_LINE;
             curr_sensor_state = SensorStates.BOTH_ON_LINE;
             robot_state = RobotStates.ON_TRACK;
@@ -279,24 +289,20 @@ namespace LF_ROBOT_GUI
         /// <param name="e"></param>
         private void timer1_Tick(object sender, EventArgs e)
         {
-            // Need to increment these every tick
-            dt += timer1.Interval;  // Will get reset to zero again if joystick enabled
+            // Need to increment interval since last auto loop iteration every tick
+            dt += timer1.Interval;  // Will get reset to zero again if auto mode not enabled
 
             if (serial != null)
             {
                 if (serial.IsOpen)
                 {
-                    //statusLabel.Text = serial.PortName.ToString() + ": CONNECTED";
-
                     // visually display if rx buffer overflowing
                     int buf_indicator_val = (int)(100 * (double)serial.BytesToRead / (double)RX_BUFF_FULL_THRESH);
                     buf_indicator_val = int.Clamp(buf_indicator_val, 0, 100);
                     rx_buf_indicator.Value = buf_indicator_val;
 
-
                     // HANDLE LINE STATE DISPLAY
                     handleLinePositionDisplay();
-
 
                     // HANDLE CONTROL LOOP ARBITRATION
                     if (auto_mode_en)
@@ -304,7 +310,7 @@ namespace LF_ROBOT_GUI
                         // tell robot to enter auto state
                         TransmitCommandMessage(CMD_MSG_ID.FSM_STATE, (byte)ROBOT_FSM_STATES.AUTO);
 
-                        /// TODO AUTOMATIC CONTROL / IDLE STATE
+                        // Run iteration of auto control loop
                         AutomaticControlLoop();
 
                         // reset dt
@@ -390,31 +396,22 @@ namespace LF_ROBOT_GUI
 
         private void ManualControlLoop()
         {
-            /// TODO
-            /// L / R motor mixing with x / y joystick chanels
-
-            // Tx joystick y chanel as target pwm
-            // interpolate cmp_voltage from CMP_MIN to CMP_MAX as duty ranges from 0 to 1
-
-
+            // Get joystick vector
             Vector2 joyPos = joystickControl.getPosNormalised();
 
-            /*
-            float y_scaled = joyPos.Y / 2.0f + 0.5f;
-            float x_scaled = joyPos.X / 2.0f + 0.5f;
-            */
-
+            // Mix x and y values to left and right motor channels
             float ch_1_mix = float.Clamp(joyPos.Y - joyPos.X, -1, 1);
             float ch_2_mix = float.Clamp(joyPos.Y + joyPos.X, -1, 1);
 
+            // Convert to desired duty cycle
             float ch_1 = ch_1_mix / 2.0f + 0.5f;
             float ch_2 = ch_2_mix / 2.0f + 0.5f;
 
+            // Convert to DAC code
             int opcode_1 = (int)((1.0f - ch_1) * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
             int opcode_2 = (int)(ch_2 * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
 
-
-            // send OPCode to DAC outputs
+            // send OPCode to DAC
             TransmitDataMessage(DATA_MSG_ID.DAC0, (byte)opcode_1);
             TransmitDataMessage(DATA_MSG_ID.DAC1, (byte)opcode_2);
 
@@ -438,23 +435,22 @@ namespace LF_ROBOT_GUI
             double curr_error_left;
             double curr_error_right;
 
+            // State of the sensors in this auto loop iteration
             SensorStates this_sensor_state = SensorStates.NEITHER_ON_LINE;
 
-            // apply thresholding to sensor values to treat readings as either 0 = ON LINE OR 1 = OFF LINE
+            // apply thresholding to sensor values to treat readings as either FALSE = ON LINE OR TRUE = OFF LINE
             bool sensor_left  = sensor_left_raw  >= sensor_threshold;
             bool sensor_right = sensor_right_raw >= sensor_threshold;
 
-
             // Determine sensor state in this iteration of the control loop
-
             if (sensor_left)
             {
-                // Case when sensors on either side of line OR robot off track
+                // Case when sensors both off the line
                 if (sensor_right)
                 {
                     this_sensor_state = SensorStates.NEITHER_ON_LINE;
                 }
-                // Case when right sensor on line
+                // Case when right sensor on the line
                 else
                 {
                     this_sensor_state = SensorStates.RIGHT_ON_LINE;
@@ -462,7 +458,7 @@ namespace LF_ROBOT_GUI
             }
             else
             {
-                // Case when left sensor on line
+                // Case when left sensor on the line
                 if (sensor_right)
                 {
                     this_sensor_state = SensorStates.LEFT_ON_LINE;
@@ -478,6 +474,7 @@ namespace LF_ROBOT_GUI
             // Check if sensor state has changed since previous iteration of the control loop
             if (this_sensor_state != curr_sensor_state)
             {
+                // If has changed, update previous and current states
                 prev_sensor_state = curr_sensor_state;
                 curr_sensor_state = this_sensor_state;
 
@@ -485,18 +482,20 @@ namespace LF_ROBOT_GUI
                 if (curr_sensor_state == SensorStates.NEITHER_ON_LINE)
                 {
                     // Determine which way the robot left the track
+                    // Left the track to the left
                     if (prev_sensor_state == SensorStates.RIGHT_ON_LINE)
                     {
                         robot_state = RobotStates.OFF_LEFT;
                     }
+                    // Left the track to the right
                     else if (prev_sensor_state == SensorStates.LEFT_ON_LINE)
                     {
                         robot_state = RobotStates.OFF_RIGHT;
                     }
+                    // Not sure which way track was left - moved too quickly - sensors didn't detect
                     else if ( prev_sensor_state == SensorStates.BOTH_ON_LINE )
                     {
                         // guess which way we should go based on current duty cycles
-
                         if (curr_dc_left > curr_dc_right)
                         {
                             // L > R => OFF RIGHT
@@ -509,6 +508,7 @@ namespace LF_ROBOT_GUI
                         }
                     }
                 }
+                // OTHERWISE ROBOT MUST BE ON TRACK
                 else
                 {
                     // robot must be on the track if 1 or more sensors detect the track
@@ -516,13 +516,12 @@ namespace LF_ROBOT_GUI
                 }
             }
 
-
-            // arbitrate goal duty for L / R chanel based on robot & sensor state
+            // arbitrate goal duty for L / R channel based on robot & sensor state
             switch (robot_state)
             {
                 case RobotStates.OFF_LEFT:
 
-                    // sharp turn right
+                    // sharp turn right - get back to on track quickly
                     goal_duty_left  = 0.5 + large_duty_sp_delta;
                     goal_duty_right = 0.5 - (1.0 + RIGHT_BELT_COMP_FACTOR) * large_duty_sp_delta;
 
@@ -530,7 +529,7 @@ namespace LF_ROBOT_GUI
 
                 case RobotStates.OFF_RIGHT:
 
-                    // sharp turn left
+                    // sharp turn left - get back to on track quickly
                     goal_duty_left  = 0.5 - large_duty_sp_delta;
                     goal_duty_right = 0.5 + (1.0 + RIGHT_BELT_COMP_FACTOR) * large_duty_sp_delta;
 
@@ -540,7 +539,7 @@ namespace LF_ROBOT_GUI
 
                     if (curr_sensor_state == SensorStates.BOTH_ON_LINE)
                     {
-                        // FULL PISS AHEAD
+                        // FULL STEAM AHEAD
                         goal_duty_left = goal_duty_right = duty_sp;
                     }
                     else
@@ -583,7 +582,6 @@ namespace LF_ROBOT_GUI
             // Convert desired duty cycle to binary code for DACs
             int opcode_left = (int)((curr_dc_left) * (OP_CMP_MAX_1 - OP_CMP_MIN_1)) + OP_CMP_MIN_1;
             int opcode_right = (int)((1.0f - curr_dc_right) * (OP_CMP_MAX_2 - OP_CMP_MIN_2)) + OP_CMP_MIN_2;
-
 
             // SEND MOTOR COMMANDS
             TransmitDataMessage(DATA_MSG_ID.DAC0, (byte)opcode_left);
@@ -800,6 +798,7 @@ namespace LF_ROBOT_GUI
         //                          OUTPUT OVERRIDE BUTTONS
         /*------------------------------------------------------------------------------------*/
 
+        // OUTPUTTING TO MOTORS FROM THIS BUTTON IS DISABLED - WILL DO NOTHING
         private void button_setVoltage_Click(object sender, EventArgs e)
         {
             // parse voltage request
@@ -814,21 +813,20 @@ namespace LF_ROBOT_GUI
                 statusLabel.Text = ex.Message;
             }
 
-
+            // Convert desired voltage to duty cycle
             float duty_cycle = (float)((voltage + VCC) / (2 * VCC));
 
+            // Determine corresponding compare voltage
             double cmp_voltage = duty_cycle * (V_CMP_MAX - V_CMP_MIN) + V_CMP_MIN;
 
-
-            // convert output voltage reqest to its corresponding compare voltage
-            // float cmp_interpollated = (float)((voltage - (-VCC)) * (V_CMP_MAX - V_CMP_MIN) / (2 * VCC) + V_CMP_MIN);
-
             statusLabel.Text = "CMP: " + cmp_voltage;
+            // Convert compare voltage to appropriate DAC code
             int opcode = (int)(255.0 * (cmp_voltage / VREF));
 
             // send OPCodes
         }
 
+        // OUTPUTTING TO MOTORS FROM THIS BUTTON IS DISABLED - WILL DO NOTHING
         private void button_pwm_Click(object sender, EventArgs e)
         {
             double duty = 0;
@@ -871,6 +869,7 @@ namespace LF_ROBOT_GUI
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="e"></param>
+        /// OUTPUTTING TO MOTORS FROM THIS BUTTON IS DISABLED - WILL DO NOTHING
         private void button_byteOutput_Click(object sender, EventArgs e)
         {
             // parse byte code
